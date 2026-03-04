@@ -1,0 +1,1101 @@
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { supabase } from "./supabaseClient";
+import {
+  fetchAuditions, upsertAudition, deleteAuditionDB,
+  fetchPracticeLog, insertPractice, deletePracticeDB,
+  fetchReadiness, upsertReadiness,
+  fetchSettings, upsertSettings,
+} from "./supabaseData";
+
+const SK = "aud-tracker-v4";
+const STATUSES = ["Preparing","Applied","Scheduled","Auditioned","Advanced","Won","Didn't Advance","Withdrew"];
+const STATUS_COLORS = {
+  Preparing:"bg-yellow-100 text-yellow-800",
+  Applied:"bg-blue-100 text-blue-800",
+  Scheduled:"bg-indigo-100 text-indigo-800",
+  Auditioned:"bg-purple-100 text-purple-800",
+  Advanced:"bg-emerald-100 text-emerald-800",
+  Won:"bg-green-200 text-green-900",
+  "Didn't Advance":"bg-gray-100 text-gray-600",
+  Withdrew:"bg-red-100 text-red-700"
+};
+const READINESS = ["Not Started","Rough","In Progress","Nearly Ready","Performance Ready"];
+const READINESS_COLORS = {
+  "Not Started":"bg-red-100 text-red-700",
+  "Rough":"bg-orange-100 text-orange-700",
+  "In Progress":"bg-yellow-100 text-yellow-800",
+  "Nearly Ready":"bg-blue-100 text-blue-700",
+  "Performance Ready":"bg-green-100 text-green-700"
+};
+const RVAL = {"Not Started":0,"Rough":1,"In Progress":2,"Nearly Ready":3,"Performance Ready":4};
+
+const DEFAULT_SETTINGS = {
+  excerptTimerMins: 20,
+  sessionTimerMins: 120,
+  runThroughMilestones: [
+    {daysOut:21, label:"Play excerpts for a friend/colleague", type:"informal"},
+    {daysOut:14, label:"Full run-through for someone", type:"runthrough"},
+    {daysOut:7, label:"Mock audition (simulate real conditions)", type:"mock"},
+    {daysOut:3, label:"Final dress run-through", type:"dress"},
+  ],
+};
+
+var API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
+
+function gid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+}
+
+function daysUntil(d) {
+  if (!d) return Infinity;
+  var target = new Date(d + "T12:00:00");
+  var now = new Date();
+  now.setHours(0,0,0,0);
+  target.setHours(0,0,0,0);
+  return Math.ceil((target - now) / 864e5);
+}
+
+function fmtDate(d) {
+  if (!d) return "";
+  return new Date(d + "T12:00:00").toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"});
+}
+
+function minsToHM(m) {
+  var h = Math.floor(m / 60);
+  var r = m % 60;
+  if (!h) return r + "m";
+  if (!r) return h + "h";
+  return h + "h " + r + "m";
+}
+
+function excLabel(e) {
+  if (!e.structured) return e.freeText;
+  var s = e.piece;
+  if (e.movement) s += " — " + e.movement;
+  if (e.measures) s += " (mm. " + e.measures + ")";
+  return s;
+}
+
+function normExcerpt(e) {
+  return (e.structured ? e.piece + " " + e.movement : e.freeText).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function autoAbbrev(name) {
+  if (!name) return "";
+  var words = name.trim().split(/\s+/);
+  var skip = ["the","of","for","and","in","at"];
+  var letters = words.filter(function(w) { return skip.indexOf(w.toLowerCase()) < 0; }).map(function(w) { return w[0].toUpperCase(); });
+  return letters.join("");
+}
+
+function getShortName(a) {
+  return a.shortName || autoAbbrev(a.orchestra);
+}
+
+function loadData() {
+  return null;
+}
+
+function saveData(data) {
+  // no-op: writes now go through Supabase
+}
+
+function makeDefault() {
+  return {
+    auditions: [],
+    practiceLog: [],
+    readiness: {},
+    settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS))
+  };
+}
+
+async function extractPDF(file) {
+  var b64 = await new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function() { res(r.result.split(",")[1]); };
+    r.onerror = function() { rej(new Error("fail")); };
+    r.readAsDataURL(file);
+  });
+  var resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": API_KEY,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1000,
+      messages: [{role: "user", content: [
+        {type: "document", source: {type: "base64", media_type: "application/pdf", data: b64}},
+        {type: "text", text: 'Extract all audition repertoire/excerpts from this PDF. Return ONLY a JSON array, no markdown, no backticks. Each object: "piece" (composer and work), "movement" (or ""), "measures" (or "").'}
+      ]}]
+    })
+  });
+  var data = await resp.json();
+  var text = (data.content || []).map(function(b){return b.text || ""}).join("");
+  return JSON.parse(text.replace(/```json|```/g, "").trim());
+}
+
+function Badge(props) {
+  return (
+    <span className={"text-xs font-medium px-2 py-0.5 rounded-full " + (STATUS_COLORS[props.status] || "bg-gray-100 text-gray-700")}>
+      {props.status}
+    </span>
+  );
+}
+
+function RBadge(props) {
+  return (
+    <span className={"text-xs font-medium px-2 py-0.5 rounded-full " + (READINESS_COLORS[props.level] || "bg-gray-100 text-gray-700")}>
+      {props.level}
+    </span>
+  );
+}
+
+function TabBtn(props) {
+  return (
+    <button
+      onClick={props.onClick}
+      className={"px-3 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap relative " + (props.active ? "bg-white text-indigo-700 border-b-2 border-indigo-600" : "text-gray-500 hover:text-gray-700")}
+    >
+      {props.label}
+      {props.alert && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />}
+    </button>
+  );
+}
+
+function Inp(props) {
+  var label = props.label;
+  var rest = Object.assign({}, props);
+  delete rest.label;
+  return (
+    <div className="flex flex-col gap-1">
+      {label && <label className="text-xs font-medium text-gray-600">{label}</label>}
+      <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" {...rest} />
+    </div>
+  );
+}
+
+function Sel(props) {
+  var label = props.label;
+  var options = props.options;
+  var rest = Object.assign({}, props);
+  delete rest.label;
+  delete rest.options;
+  return (
+    <div className="flex flex-col gap-1">
+      {label && <label className="text-xs font-medium text-gray-600">{label}</label>}
+      <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white" {...rest}>
+        {options.map(function(o) { return <option key={o} value={o}>{o}</option>; })}
+      </select>
+    </div>
+  );
+}
+
+function Btn(props) {
+  var children = props.children;
+  var variant = props.variant || "primary";
+  var className = props.className || "";
+  var rest = Object.assign({}, props);
+  delete rest.children;
+  delete rest.variant;
+  delete rest.className;
+  var styles = {
+    primary: "bg-indigo-600 text-white hover:bg-indigo-700",
+    secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100",
+    ghost: "text-gray-500 hover:text-gray-700"
+  };
+  return (
+    <button className={"px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 " + styles[variant] + " " + className} {...rest}>
+      {children}
+    </button>
+  );
+}
+
+function BirdPopup(props) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30" onClick={props.onClose}>
+      <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-xs text-center relative" onClick={function(e){e.stopPropagation()}}>
+        <div className="text-6xl mb-2">🐦</div>
+        <div className="relative bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4">
+          <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-indigo-50 border-l border-t border-indigo-200 rotate-45" />
+          <p className="text-sm font-medium text-indigo-800 relative z-10">{props.message}</p>
+        </div>
+        <Btn onClick={props.onClose}>Got it!</Btn>
+      </div>
+    </div>
+  );
+}
+
+function TimerWidget(props) {
+  var defaultMins = props.defaultMins;
+  var mode = props.mode;
+  var onComplete = props.onComplete;
+  var [inputMins, setInputMins] = useState(defaultMins);
+  var [secsLeft, setSecsLeft] = useState(null);
+  var [running, setRunning] = useState(false);
+  var intervalRef = useRef(null);
+
+  useEffect(function() { setInputMins(defaultMins); }, [defaultMins]);
+
+  function start() {
+    var total = Math.max(1, parseInt(inputMins) || 1) * 60;
+    setSecsLeft(total);
+    setRunning(true);
+  }
+
+  function stop() {
+    setRunning(false);
+    setSecsLeft(null);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+  }
+
+  function togglePause() {
+    setRunning(function(r) { return !r; });
+  }
+
+  useEffect(function() {
+    if (running && secsLeft !== null) {
+      intervalRef.current = setInterval(function() {
+        setSecsLeft(function(s) {
+          if (s <= 1) {
+            clearInterval(intervalRef.current);
+            setRunning(false);
+            onComplete();
+            return 0;
+          }
+          return s - 1;
+        });
+      }, 1000);
+      return function() { clearInterval(intervalRef.current); };
+    }
+  }, [running]);
+
+  var mm = secsLeft !== null ? String(Math.floor(secsLeft / 60)).padStart(2, "0") : "--";
+  var ss = secsLeft !== null ? String(secsLeft % 60).padStart(2, "0") : "--";
+  var pct = secsLeft !== null && inputMins ? Math.max(0, (1 - secsLeft / (inputMins * 60)) * 100) : 0;
+  var barColor = pct > 80 ? "#ef4444" : pct > 50 ? "#f59e0b" : "#6366f1";
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-700">
+          {mode === "excerpt" ? "⏱ Excerpt Timer" : "⏱ Session Timer"}
+        </span>
+        {secsLeft === null && (
+          <div className="flex items-center gap-2">
+            <input type="number" className="border border-gray-300 rounded px-2 py-1 text-sm w-16 text-center" value={inputMins} onChange={function(e){setInputMins(e.target.value)}} min={1} />
+            <span className="text-xs text-gray-500">min</span>
+          </div>
+        )}
+      </div>
+      {secsLeft !== null && (
+        <div className="w-full bg-gray-100 rounded-full h-2">
+          <div className="h-2 rounded-full transition-all duration-1000" style={{width: pct + "%", backgroundColor: barColor}} />
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <span className={"text-3xl font-mono font-bold " + (secsLeft !== null && secsLeft < 60 ? "text-red-600 animate-pulse" : "text-gray-800")}>
+          {mm}:{ss}
+        </span>
+        <div className="flex gap-2">
+          {secsLeft === null ? (
+            <Btn onClick={start}>Start</Btn>
+          ) : (
+            <>
+              <Btn variant="secondary" onClick={togglePause}>{running ? "Pause" : "Resume"}</Btn>
+              <Btn variant="danger" onClick={stop}>Reset</Btn>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExcerptInput(props) {
+  var excerpts = props.excerpts;
+  var onChange = props.onChange;
+  var [mode, setMode] = useState("free");
+  var [draft, setDraft] = useState({freeText:"", piece:"", movement:"", measures:""});
+  var [uploading, setUploading] = useState(false);
+  var [err, setErr] = useState("");
+
+  function add() {
+    if (mode === "free" && !draft.freeText.trim()) return;
+    if (mode === "structured" && !draft.piece.trim()) return;
+    var entry;
+    if (mode === "free") {
+      entry = {structured: false, freeText: draft.freeText.trim(), id: gid()};
+    } else {
+      entry = {structured: true, piece: draft.piece.trim(), movement: draft.movement.trim(), measures: draft.measures.trim(), id: gid()};
+    }
+    onChange([...excerpts, entry]);
+    setDraft({freeText:"", piece:"", movement:"", measures:""});
+  }
+
+  async function handlePDF(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!API_KEY) {
+      setErr("No API key configured. Add VITE_ANTHROPIC_API_KEY to your environment.");
+      return;
+    }
+    setUploading(true);
+    setErr("");
+    try {
+      var items = await extractPDF(file);
+      var newItems = items.map(function(it) {
+        return {id: gid(), structured: true, piece: it.piece || "", movement: it.movement || "", measures: it.measures || ""};
+      });
+      onChange([...excerpts, ...newItems]);
+    } catch(ex) {
+      console.error(ex);
+      setErr("Could not extract from PDF. Try adding manually.");
+    }
+    setUploading(false);
+    e.target.value = "";
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2 items-center flex-wrap">
+        <span className="text-xs text-gray-500">Input:</span>
+        <button onClick={function(){setMode("free")}} className={"text-xs px-2 py-1 rounded " + (mode === "free" ? "bg-indigo-100 text-indigo-700" : "text-gray-500")}>Free text</button>
+        <button onClick={function(){setMode("structured")}} className={"text-xs px-2 py-1 rounded " + (mode === "structured" ? "bg-indigo-100 text-indigo-700" : "text-gray-500")}>Structured</button>
+        <span className="text-xs text-gray-300">|</span>
+        <label className={"text-xs px-3 py-1 rounded cursor-pointer " + (uploading ? "bg-gray-100 text-gray-400" : "bg-violet-100 text-violet-700 hover:bg-violet-200")}>
+          {uploading ? "Extracting..." : "Upload PDF"}
+          <input type="file" accept=".pdf" className="hidden" onChange={handlePDF} disabled={uploading} />
+        </label>
+      </div>
+      {uploading && (
+        <div className="flex items-center gap-2 text-sm text-violet-600">
+          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          Reading PDF...
+        </div>
+      )}
+      {err && <p className="text-xs text-red-500">{err}</p>}
+      {mode === "free" ? (
+        <div className="flex gap-2">
+          <input className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Don Juan opening" value={draft.freeText} onChange={function(e){setDraft({...draft, freeText: e.target.value})}} onKeyDown={function(e){if(e.key==="Enter") add()}} />
+          <Btn onClick={add}>Add</Btn>
+        </div>
+      ) : (
+        <div className="flex gap-2 flex-wrap items-end">
+          <Inp label="Piece" placeholder="Brahms Symphony No. 1" value={draft.piece} onChange={function(e){setDraft({...draft, piece: e.target.value})}} />
+          <Inp label="Movement" placeholder="IV" value={draft.movement} onChange={function(e){setDraft({...draft, movement: e.target.value})}} />
+          <Inp label="Measures" placeholder="1-20" value={draft.measures} onChange={function(e){setDraft({...draft, measures: e.target.value})}} />
+          <Btn onClick={add}>Add</Btn>
+        </div>
+      )}
+      {excerpts.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-gray-500">{excerpts.length} excerpt{excerpts.length !== 1 ? "s" : ""}</span>
+            {excerpts.length > 3 && <button onClick={function(){onChange([])}} className="text-xs text-red-400 hover:text-red-600">Clear all</button>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {excerpts.map(function(e) {
+              return (
+                <span key={e.id} className="inline-flex items-center gap-1 bg-gray-100 text-sm px-3 py-1 rounded-full">
+                  {excLabel(e)}
+                  <button onClick={function(){onChange(excerpts.filter(function(x){return x.id !== e.id}))}} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AuditionForm(props) {
+  var initial = props.initial;
+  var onSave = props.onSave;
+  var onCancel = props.onCancel;
+  var [f, setF] = useState(initial || {id: gid(), orchestra:"", shortName:"", date:"", location:"", status:"Preparing", round:"", notes:"", excerpts:[]});
+  var [autoShort, setAutoShort] = useState(!initial || !initial.shortName);
+
+  function s(k, v) {
+    setF(function(prev) {
+      var next = {...prev, [k]: v};
+      if (k === "orchestra" && autoShort) {
+        next.shortName = autoAbbrev(v);
+      }
+      return next;
+    });
+  }
+
+  function setShort(v) {
+    setAutoShort(false);
+    setF(function(prev) { return {...prev, shortName: v}; });
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4 shadow-sm">
+      <h3 className="font-semibold text-gray-800">{initial ? "Edit Audition" : "New Audition"}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Inp label="Orchestra" value={f.orchestra} onChange={function(e){s("orchestra",e.target.value)}} placeholder="Chicago Symphony Orchestra" />
+        <Inp label="Short Name" value={f.shortName} onChange={function(e){setShort(e.target.value)}} placeholder="CSO" />
+        <Inp label="Date" type="date" value={f.date} onChange={function(e){s("date",e.target.value)}} />
+        <Inp label="Location" value={f.location} onChange={function(e){s("location",e.target.value)}} placeholder="Symphony Center" />
+        <Inp label="Round" value={f.round} onChange={function(e){s("round",e.target.value)}} placeholder="Prelim / Semi / Final" />
+        <Sel label="Status" value={f.status} onChange={function(e){s("status",e.target.value)}} options={STATUSES} />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-gray-600 block mb-1">Notes</label>
+        <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" rows={2} value={f.notes} onChange={function(e){s("notes",e.target.value)}} placeholder="Feedback, thoughts..." />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-gray-600 block mb-2">Rep List</label>
+        <ExcerptInput excerpts={f.excerpts} onChange={function(ex){s("excerpts",ex)}} />
+      </div>
+      <div className="flex gap-2 justify-end">
+        <Btn variant="secondary" onClick={onCancel}>Cancel</Btn>
+        <Btn onClick={function(){onSave(f)}} disabled={!f.orchestra.trim()}>Save</Btn>
+      </div>
+    </div>
+  );
+}
+
+function RunThroughPanel(props) {
+  var auditions = props.auditions;
+  var settings = props.settings;
+  var active = auditions.filter(function(a) {
+    return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0 && a.date;
+  });
+  if (!active.length) return null;
+
+  var milestones = settings.runThroughMilestones || DEFAULT_SETTINGS.runThroughMilestones;
+  var upcoming = [];
+  active.forEach(function(a) {
+    var days = daysUntil(a.date);
+    milestones.forEach(function(m) {
+      if (days <= m.daysOut && days > 0) {
+        upcoming.push({...m, orchestra: getShortName(a), daysLeft: days});
+      }
+    });
+  });
+  if (!upcoming.length) return null;
+  upcoming.sort(function(a,b) { return a.daysLeft - b.daysLeft; });
+
+  var typeColors = {
+    informal: "bg-blue-50 border-blue-200 text-blue-800",
+    runthrough: "bg-purple-50 border-purple-200 text-purple-800",
+    mock: "bg-amber-50 border-amber-200 text-amber-800",
+    dress: "bg-red-50 border-red-200 text-red-800"
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+      <h4 className="text-sm font-semibold text-gray-800">🎯 Run-Through Milestones</h4>
+      <p className="text-xs text-gray-500">Based on your configured timeline.</p>
+      {upcoming.map(function(m, i) {
+        return (
+          <div key={i} className={"border rounded-lg px-3 py-2 text-sm " + (typeColors[m.type] || "bg-gray-50 border-gray-200 text-gray-700")}>
+            <div className="flex items-center justify-between">
+              <span className="font-medium">{m.label}</span>
+              <span className="text-xs opacity-75">{m.orchestra} · {m.daysLeft}d left</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SettingsPanel(props) {
+  var settings = props.settings;
+  var onUpdate = props.onUpdate;
+  var [et, setEt] = useState(settings.excerptTimerMins);
+  var [st, setSt] = useState(settings.sessionTimerMins);
+  var [miles, setMiles] = useState(settings.runThroughMilestones || DEFAULT_SETTINGS.runThroughMilestones);
+  var [newM, setNewM] = useState({daysOut:"", label:"", type:"informal"});
+
+  function save() {
+    onUpdate({...settings, excerptTimerMins: parseInt(et) || 20, sessionTimerMins: parseInt(st) || 120, runThroughMilestones: miles});
+  }
+
+  function addMilestone() {
+    if (!newM.daysOut || !newM.label) return;
+    var updated = [...miles, {daysOut: parseInt(newM.daysOut), label: newM.label, type: newM.type}];
+    updated.sort(function(a,b) { return b.daysOut - a.daysOut; });
+    setMiles(updated);
+    setNewM({daysOut:"", label:"", type:"informal"});
+  }
+
+  function removeMilestone(idx) {
+    setMiles(miles.filter(function(_, j) { return j !== idx; }));
+  }
+
+  function resetDefaults() {
+    setEt(DEFAULT_SETTINGS.excerptTimerMins);
+    setSt(DEFAULT_SETTINGS.sessionTimerMins);
+    setMiles(JSON.parse(JSON.stringify(DEFAULT_SETTINGS.runThroughMilestones)));
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <h3 className="font-semibold text-gray-800">Timer Defaults</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <Inp label="Excerpt timer (minutes)" type="number" value={et} onChange={function(e){setEt(e.target.value)}} min={1} />
+          <Inp label="Session timer (minutes)" type="number" value={st} onChange={function(e){setSt(e.target.value)}} min={1} />
+        </div>
+      </div>
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <h3 className="font-semibold text-gray-800">Run-Through Milestones</h3>
+        <p className="text-xs text-gray-500">Configure when to schedule play-throughs, mock auditions, etc.</p>
+        <div className="space-y-2">
+          {miles.map(function(m, i) {
+            return (
+              <div key={i} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-3 py-2">
+                <span className="font-medium text-indigo-600 w-12 shrink-0">{m.daysOut}d</span>
+                <span className="flex-1">{m.label}</span>
+                <span className="text-xs text-gray-400">{m.type}</span>
+                <button onClick={function(){removeMilestone(i)}} className="text-gray-300 hover:text-red-500">&times;</button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex gap-2 flex-wrap items-end border-t border-gray-100 pt-3">
+          <Inp label="Days before" type="number" value={newM.daysOut} onChange={function(e){setNewM({...newM, daysOut: e.target.value})}} placeholder="14" style={{width:80}} />
+          <Inp label="Description" value={newM.label} onChange={function(e){setNewM({...newM, label: e.target.value})}} placeholder="Play for a friend" />
+          <Sel label="Type" value={newM.type} onChange={function(e){setNewM({...newM, type: e.target.value})}} options={["informal","runthrough","mock","dress"]} />
+          <Btn onClick={addMilestone} disabled={!newM.daysOut || !newM.label}>Add</Btn>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Btn onClick={save}>Save Settings</Btn>
+        <Btn variant="secondary" onClick={resetDefaults}>Reset to Defaults</Btn>
+      </div>
+    </div>
+  );
+}
+
+function PrepPlanner(props) {
+  var auditions = props.auditions;
+  var readiness = props.readiness;
+  var onSetReadiness = props.onSetReadiness;
+  var practiceLog = props.practiceLog;
+  var settings = props.settings;
+
+  var active = auditions.filter(function(a) {
+    return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0;
+  });
+
+  var excerptMap = useMemo(function() {
+    var map = {};
+    active.forEach(function(a) {
+      (a.excerpts || []).forEach(function(e) {
+        var key = normExcerpt(e);
+        if (!map[key]) map[key] = {key: key, label: excLabel(e), auditions: [], excerptIds: []};
+        map[key].auditions.push({id: a.id, orchestra: getShortName(a), date: a.date, daysLeft: daysUntil(a.date)});
+        map[key].excerptIds.push(e.id);
+      });
+    });
+    return map;
+  }, [active]);
+
+  var scored = useMemo(function() {
+    return Object.values(excerptMap).map(function(ex) {
+      var closestDays = Math.min.apply(null, ex.auditions.map(function(a){return a.daysLeft}));
+      var n = ex.auditions.length;
+      var rLevel = readiness[ex.key] || "Not Started";
+      var score = Math.max(0, closestDays) + (RVAL[rLevel] * 15) + (n * -20);
+      return {...ex, closestDays: closestDays, numAuditions: n, readinessLevel: rLevel, score: score};
+    }).sort(function(a,b){return a.score - b.score});
+  }, [excerptMap, readiness]);
+
+  var practiceTotals = useMemo(function() {
+    var t = {};
+    practiceLog.forEach(function(p) {
+      var a = auditions.find(function(x){return x.id === p.auditionId});
+      if (!a) return;
+      var ex = a.excerpts.find(function(e){return e.id === p.excerptId});
+      if (!ex) return;
+      var key = normExcerpt(ex);
+      t[key] = (t[key] || 0) + p.minutes;
+    });
+    return t;
+  }, [practiceLog, auditions]);
+
+  var thisWeek = scored.filter(function(e){return e.closestDays <= 7});
+  var nextWeeks = scored.filter(function(e){return e.closestDays > 7 && e.closestDays <= 21});
+  var later = scored.filter(function(e){return e.closestDays > 21});
+  var highROI = scored.filter(function(e){return e.numAuditions >= 2});
+
+  function ExRow(rowProps) {
+    var ex = rowProps.ex;
+    var practiced = practiceTotals[ex.key] || 0;
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-gray-900 text-sm">{ex.label}</div>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {ex.auditions.map(function(a, i) {
+                return (<span key={i} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{a.orchestra} ({a.daysLeft <= 0 ? "past" : a.daysLeft + "d"})</span>);
+              })}
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {ex.numAuditions > 1 && (<span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">x{ex.numAuditions} lists</span>)}
+            {practiced > 0 && (<span className="text-xs text-gray-400">{minsToHM(practiced)} practiced</span>)}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="text-xs text-gray-500 mr-1">Readiness:</span>
+          {READINESS.map(function(r) {
+            return (
+              <button key={r} onClick={function(){onSetReadiness(ex.key, r)}} className={"text-xs px-2 py-0.5 rounded-full transition-colors " + (ex.readinessLevel === r ? READINESS_COLORS[r] : "bg-gray-50 text-gray-400 hover:bg-gray-100")}>
+                {r}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  function Section(secProps) {
+    if (!secProps.items.length) return null;
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <h4 className={"text-sm font-semibold " + secProps.color}>{secProps.title}</h4>
+          <span className="text-xs text-gray-400">{secProps.sub}</span>
+        </div>
+        {secProps.items.map(function(ex) { return (<ExRow key={ex.key} ex={ex} />); })}
+      </div>
+    );
+  }
+
+  if (!active.length) return (<p className="text-sm text-gray-400 text-center py-8">No active auditions to plan for.</p>);
+  if (!scored.length) return (<p className="text-sm text-gray-400 text-center py-8">Add rep lists to your auditions to see the prep plan.</p>);
+
+  return (
+    <div className="space-y-5">
+      <RunThroughPanel auditions={auditions} settings={settings} />
+      {highROI.length > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-1">
+          <h4 className="text-sm font-semibold text-emerald-800">Highest ROI — on multiple lists</h4>
+          <p className="text-xs text-emerald-600 mb-2">Nail these to cover ground across auditions.</p>
+          {highROI.map(function(ex) {
+            return (
+              <div key={ex.key} className="flex items-center justify-between text-sm">
+                <span className="text-emerald-800">{ex.label}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-emerald-600 font-medium">x{ex.numAuditions}</span>
+                  <RBadge level={ex.readinessLevel} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <Section title="🔴 This Week" sub="Auditions within 7 days" color="text-red-700" items={thisWeek} />
+      <Section title="🟡 Next 2-3 Weeks" sub="Auditions within 21 days" color="text-amber-700" items={nextWeeks} />
+      <Section title="🟢 Can Build Over Time" sub="21+ days out" color="text-gray-600" items={later} />
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <h4 className="text-sm font-semibold text-gray-700 mb-1">Full Priority Ranking</h4>
+        <p className="text-xs text-gray-500 mb-3">Scored by deadline + overlap + readiness.</p>
+        <div className="space-y-1">
+          {scored.map(function(ex, i) {
+            return (
+              <div key={ex.key} className="flex items-center gap-2 text-sm py-1">
+                <span className={"w-6 text-right font-bold " + (i < 3 ? "text-red-600" : i < 8 ? "text-amber-600" : "text-gray-400")}>{i + 1}</span>
+                <span className="flex-1 text-gray-800">{ex.label}</span>
+                <span className="text-xs text-gray-400">{ex.closestDays <= 0 ? "past" : ex.closestDays + "d"}</span>
+                {ex.numAuditions > 1 && (<span className="text-xs text-emerald-600">x{ex.numAuditions}</span>)}
+                <RBadge level={ex.readinessLevel} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PracticeTab(props) {
+  var auditions = props.auditions;
+  var practiceLog = props.practiceLog;
+  var onAdd = props.onAdd;
+  var onDelete = props.onDelete;
+  var settings = props.settings;
+
+  var allEx = useMemo(function() {
+    var o = [];
+    auditions.forEach(function(a) {
+      var short = getShortName(a);
+      (a.excerpts || []).forEach(function(e) {
+        o.push({auditionId: a.id, excerptId: e.id, label: excLabel(e), orchestra: a.orchestra, short: short});
+      });
+    });
+    return o;
+  }, [auditions]);
+
+  var [sel, setSel] = useState("");
+  var [mins, setMins] = useState("");
+  var [note, setNote] = useState("");
+  var [birdMsg, setBirdMsg] = useState(null);
+
+  function submit() {
+    if (!sel || !mins) return;
+    var ex = allEx.find(function(e){return e.excerptId === sel});
+    onAdd({id: gid(), excerptId: sel, auditionId: ex.auditionId, label: ex.label, orchestra: ex.orchestra, short: ex.short, minutes: parseInt(mins, 10), note: note, date: new Date().toISOString().slice(0,10)});
+    setMins("");
+    setNote("");
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TimerWidget defaultMins={settings.excerptTimerMins} mode="excerpt" onComplete={function(){setBirdMsg("Time to move on! 🎵")}} />
+        <TimerWidget defaultMins={settings.sessionTimerMins} mode="session" onComplete={function(){setBirdMsg("Time to stop! Great work today. 🎶")}} />
+      </div>
+      {birdMsg && (<BirdPopup message={birdMsg} onClose={function(){setBirdMsg(null)}} />)}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+        <h4 className="text-sm font-medium text-gray-700">Log Practice</h4>
+        {allEx.length === 0 ? (
+          <p className="text-sm text-gray-500">Add excerpts to an audition first.</p>
+        ) : (
+          <div className="flex gap-2 flex-wrap items-end">
+            <div className="flex flex-col gap-1 flex-1 min-w-48">
+              <label className="text-xs font-medium text-gray-600">Excerpt</label>
+              <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" value={sel} onChange={function(e){setSel(e.target.value)}}>
+                <option value="">Select...</option>
+                {allEx.map(function(e) { return (<option key={e.excerptId} value={e.excerptId}>{e.short}: {e.label}</option>); })}
+              </select>
+            </div>
+            <Inp label="Minutes" type="number" value={mins} onChange={function(e){setMins(e.target.value)}} placeholder="30" style={{width:80}} />
+            <Inp label="Note" value={note} onChange={function(e){setNote(e.target.value)}} placeholder="Worked on intonation" />
+            <Btn onClick={submit} disabled={!sel || !mins}>Log</Btn>
+          </div>
+        )}
+      </div>
+      {practiceLog.length > 0 && (
+        <div className="space-y-1">
+          <h4 className="text-sm font-medium text-gray-600">Recent Sessions</h4>
+          {practiceLog.slice(0, 30).map(function(p) {
+            return (
+              <div key={p.id} className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2 text-sm">
+                <div>
+                  <span className="font-medium text-gray-700">{p.label}</span>
+                  <span className="text-gray-400 ml-2">({p.short || p.orchestra})</span>
+                  {p.note && (<span className="text-gray-400 ml-2">— {p.note}</span>)}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-indigo-600 font-medium">{minsToHM(p.minutes)}</span>
+                  <span className="text-gray-400 text-xs">{fmtDate(p.date)}</span>
+                  <button onClick={function(){onDelete(p.id)}} className="text-gray-300 hover:text-red-400">&times;</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {practiceLog.length > 0 && (
+        <div className="space-y-1">
+          <h4 className="text-sm font-medium text-gray-600">Totals by Excerpt</h4>
+          {Object.values(practiceLog.reduce(function(acc, p) {
+            if (!acc[p.excerptId]) acc[p.excerptId] = {label: p.label, orchestra: p.short || p.orchestra, minutes: 0};
+            acc[p.excerptId].minutes += p.minutes;
+            return acc;
+          }, {})).sort(function(a,b){return b.minutes - a.minutes}).map(function(s, i) {
+            return (
+              <div key={i} className="flex justify-between text-sm bg-gray-50 rounded-lg px-3 py-2">
+                <span>{s.label} <span className="text-gray-400">({s.orchestra})</span></span>
+                <span className="font-medium text-indigo-600">{minsToHM(s.minutes)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function exportCSV(data) {
+  var rows = [["Orchestra","Short Name","Date","Location","Status","Round","Notes","Excerpts"]];
+  data.auditions.forEach(function(a) {
+    var ex = (a.excerpts || []).map(function(e){return e.structured ? e.piece+"|"+e.movement+"|"+e.measures : e.freeText}).join("; ");
+    rows.push([a.orchestra, getShortName(a), a.date, a.location, a.status, a.round, a.notes, ex]);
+  });
+  var csv = rows.map(function(r){return r.map(function(c){return '"' + (c||"").replace(/"/g,'""') + '"'}).join(",")}).join("\n");
+  var blob = new Blob([csv], {type:"text/csv"});
+  var url = URL.createObjectURL(blob);
+  var link = document.createElement("a");
+  link.href = url;
+  link.download = "auditions.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function App(props) {
+  var session = props.session;
+  var userId = session.user.id;
+
+  var [data, setData] = useState(makeDefault());
+  var [tab, setTab] = useState("auditions");
+  var [editing, setEditing] = useState(null);
+  var [loading, setLoading] = useState(true);
+
+  // Load all data from Supabase on mount
+  useEffect(function() {
+    var cancelled = false;
+    async function load() {
+      try {
+        var [auditions, practiceLog, readiness, settings] = await Promise.all([
+          fetchAuditions(),
+          fetchPracticeLog(),
+          fetchReadiness(),
+          fetchSettings(),
+        ]);
+        if (!cancelled) {
+          setData({
+            auditions: auditions,
+            practiceLog: practiceLog,
+            readiness: readiness,
+            settings: settings || JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+          });
+          setLoading(false);
+        }
+      } catch(err) {
+        console.error("Failed to load data:", err);
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return function() { cancelled = true; };
+  }, []);
+
+  async function saveAudition(a) {
+    try {
+      await upsertAudition(userId, a);
+      var idx = data.auditions.findIndex(function(x){return x.id === a.id});
+      var au = idx >= 0 ? data.auditions.map(function(x,i){return i === idx ? a : x}) : [...data.auditions, a];
+      setData(function(prev) { return {...prev, auditions: au}; });
+      setEditing(null);
+    } catch(err) {
+      console.error("Save audition error:", err);
+      alert("Failed to save audition. Check console.");
+    }
+  }
+
+  async function deleteAudition(id) {
+    try {
+      await deleteAuditionDB(id);
+      // also delete related practice logs from DB
+      var relatedLogs = data.practiceLog.filter(function(p){return p.auditionId === id});
+      for (var i = 0; i < relatedLogs.length; i++) {
+        await deletePracticeDB(relatedLogs[i].id);
+      }
+      setData(function(prev) {
+        return {
+          ...prev,
+          auditions: prev.auditions.filter(function(a){return a.id !== id}),
+          practiceLog: prev.practiceLog.filter(function(p){return p.auditionId !== id}),
+        };
+      });
+    } catch(err) {
+      console.error("Delete audition error:", err);
+    }
+  }
+
+  async function addPractice(entry) {
+    try {
+      await insertPractice(userId, entry);
+      setData(function(prev) { return {...prev, practiceLog: [entry, ...prev.practiceLog]}; });
+    } catch(err) {
+      console.error("Add practice error:", err);
+    }
+  }
+
+  async function deletePractice(id) {
+    try {
+      await deletePracticeDB(id);
+      setData(function(prev) { return {...prev, practiceLog: prev.practiceLog.filter(function(p){return p.id !== id})}; });
+    } catch(err) {
+      console.error("Delete practice error:", err);
+    }
+  }
+
+  async function setReadinessLevel(key, level) {
+    try {
+      await upsertReadiness(userId, key, level);
+      setData(function(prev) { return {...prev, readiness: {...(prev.readiness || {}), [key]: level}}; });
+    } catch(err) {
+      console.error("Set readiness error:", err);
+    }
+  }
+
+  async function updateSettings(s) {
+    try {
+      await upsertSettings(userId, s);
+      setData(function(prev) { return {...prev, settings: s}; });
+    } catch(err) {
+      console.error("Update settings error:", err);
+    }
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+  }
+
+  var settings = data.settings || DEFAULT_SETTINGS;
+
+  var stats = useMemo(function() {
+    var t = data.auditions.length;
+    var w = data.auditions.filter(function(a){return a.status === "Won"}).length;
+    var adv = data.auditions.filter(function(a){return a.status === "Advanced"}).length;
+    var comp = data.auditions.filter(function(a){return ["Auditioned","Advanced","Won","Didn't Advance"].indexOf(a.status) >= 0}).length;
+    var tp = data.practiceLog.reduce(function(s,p){return s + p.minutes}, 0);
+    return {total:t, won:w, advanced:adv, completed:comp, totalPractice:tp, advanceRate: comp > 0 ? Math.round(((w+adv)/comp)*100) : 0};
+  }, [data]);
+
+  var sorted = useMemo(function() {
+    return [...data.auditions].sort(function(a,b) {
+      return (a.date ? new Date(a.date) : new Date("2099-01-01")) - (b.date ? new Date(b.date) : new Date("2099-01-01"));
+    });
+  }, [data.auditions]);
+
+  var hasActiveMilestones = useMemo(function() {
+    var active = data.auditions.filter(function(a){return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0 && a.date});
+    var miles = (settings.runThroughMilestones || []);
+    return active.some(function(a) {
+      var d = daysUntil(a.date);
+      return miles.some(function(m){return d <= m.daysOut && d > 0});
+    });
+  }, [data.auditions, settings]);
+
+  if (loading) {
+    return (
+      <div className="max-w-3xl mx-auto p-4 text-center py-20">
+        <p className="text-gray-400 text-sm">Loading your data...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto p-4 space-y-4 font-sans">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-gray-900">🎻 Audition Tracker</h1>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400 hidden sm:inline">{session.user.email}</span>
+          <Btn variant="ghost" onClick={function(){exportCSV(data)}} className="text-xs">Export CSV</Btn>
+          <Btn variant="ghost" onClick={handleSignOut} className="text-xs">Sign Out</Btn>
+        </div>
+      </div>
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["dashboard","Dashboard"],["settings","Settings"]].map(function(item) {
+          return (
+            <TabBtn key={item[0]} label={item[1]} active={tab === item[0]} onClick={function(){setTab(item[0])}} alert={item[0] === "planner" && hasActiveMilestones} />
+          );
+        })}
+      </div>
+
+      {tab === "auditions" && (
+        <div className="space-y-4">
+          {editing ? (
+            <AuditionForm
+              initial={editing === "new" ? null : data.auditions.find(function(a){return a.id === editing})}
+              onSave={saveAudition}
+              onCancel={function(){setEditing(null)}}
+            />
+          ) : (
+            <Btn onClick={function(){setEditing("new")}}>+ New Audition</Btn>
+          )}
+          {sorted.length === 0 && !editing && (<p className="text-sm text-gray-400 text-center py-8">No auditions yet — add one to get started.</p>)}
+          {sorted.map(function(a) {
+            var d = daysUntil(a.date);
+            return (
+              <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-2 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{a.orchestra} <span className="text-sm font-normal text-gray-400">({getShortName(a)})</span></h3>
+                    <p className="text-sm text-gray-500">
+                      {fmtDate(a.date)}{a.location ? " · " + a.location : ""}{a.round ? " · " + a.round : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge status={a.status} />
+                    {a.date && d > 0 && d < 999 && (
+                      <span className={"text-xs " + (d <= 7 ? "text-red-600 font-bold" : "text-gray-400")}>{d}d</span>
+                    )}
+                  </div>
+                </div>
+                {a.excerpts.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {a.excerpts.map(function(e) {
+                      return (<span key={e.id} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{excLabel(e)}</span>);
+                    })}
+                  </div>
+                )}
+                {a.notes && (<p className="text-sm text-gray-500 italic">{a.notes}</p>)}
+                <div className="flex gap-2 pt-1">
+                  <Btn variant="ghost" className="text-xs" onClick={function(){setEditing(a.id)}}>Edit</Btn>
+                  <Btn variant="danger" className="text-xs" onClick={function(){deleteAudition(a.id)}}>Delete</Btn>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "planner" && (
+        <PrepPlanner auditions={data.auditions} readiness={data.readiness || {}} onSetReadiness={setReadinessLevel} practiceLog={data.practiceLog} settings={settings} />
+      )}
+
+      {tab === "practice" && (
+        <PracticeTab auditions={data.auditions} practiceLog={data.practiceLog} onAdd={addPractice} onDelete={deletePractice} settings={settings} />
+      )}
+
+      {tab === "dashboard" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[["Total", stats.total],["Completed", stats.completed],["Adv / Won", stats.advanced + stats.won],["Adv Rate", stats.advanceRate + "%"]].map(function(item) {
+              return (
+                <div key={item[0]} className="bg-white border border-gray-200 rounded-xl p-3 text-center">
+                  <div className="text-2xl font-bold text-indigo-700">{item[1]}</div>
+                  <div className="text-xs text-gray-500">{item[0]}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="bg-white border border-gray-200 rounded-xl p-3 text-center">
+            <div className="text-2xl font-bold text-indigo-700">{minsToHM(stats.totalPractice)}</div>
+            <div className="text-xs text-gray-500">Total Practice Logged</div>
+          </div>
+          <h4 className="text-sm font-medium text-gray-600">All Auditions</h4>
+          {sorted.length === 0 && (<p className="text-sm text-gray-400">Nothing yet.</p>)}
+          <div className="space-y-2">
+            {sorted.map(function(a) {
+              return (
+                <div key={a.id} className="flex items-center gap-3 text-sm">
+                  <span className="w-24 text-gray-400 text-xs text-right shrink-0">{fmtDate(a.date) || "No date"}</span>
+                  <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+                  <span className="font-medium text-gray-800">{getShortName(a)}</span>
+                  <Badge status={a.status} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === "settings" && (
+        <SettingsPanel settings={settings} onUpdate={updateSettings} />
+      )}
+    </div>
+  );
+}
