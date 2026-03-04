@@ -850,7 +850,7 @@ export default function App(props) {
   var [editing, setEditing] = useState(null);
   var [loading, setLoading] = useState(true);
 
-  // Load all data from Supabase on mount
+  // Load all data from Supabase on mount, migrate localStorage if needed
   useEffect(function() {
     var cancelled = false;
     async function load() {
@@ -861,6 +861,54 @@ export default function App(props) {
           fetchReadiness(),
           fetchSettings(),
         ]);
+
+        // Auto-migrate from localStorage if Supabase is empty and localStorage has data
+        var localRaw = null;
+        try { localRaw = localStorage.getItem(SK); } catch(e) {}
+        var localData = localRaw ? JSON.parse(localRaw) : null;
+
+        if (auditions.length === 0 && localData && localData.auditions && localData.auditions.length > 0) {
+          console.log("Migrating localStorage data to Supabase...");
+          // Migrate auditions
+          for (var i = 0; i < localData.auditions.length; i++) {
+            var a = localData.auditions[i];
+            if (!a.shortName) a.shortName = a.shortName || autoAbbrev(a.orchestra);
+            await upsertAudition(userId, a);
+          }
+          // Migrate practice log
+          if (localData.practiceLog) {
+            for (var j = 0; j < localData.practiceLog.length; j++) {
+              await insertPractice(userId, localData.practiceLog[j]);
+            }
+          }
+          // Migrate readiness
+          if (localData.readiness) {
+            var keys = Object.keys(localData.readiness);
+            for (var k = 0; k < keys.length; k++) {
+              await upsertReadiness(userId, keys[k], localData.readiness[keys[k]]);
+            }
+          }
+          // Migrate settings
+          if (localData.settings) {
+            await upsertSettings(userId, localData.settings);
+          }
+          // Mark migration done so we don't repeat
+          try { localStorage.setItem(SK + "-migrated", "true"); } catch(e) {}
+          console.log("Migration complete!");
+
+          // Re-fetch everything from Supabase
+          var fresh = await Promise.all([
+            fetchAuditions(),
+            fetchPracticeLog(),
+            fetchReadiness(),
+            fetchSettings(),
+          ]);
+          auditions = fresh[0];
+          practiceLog = fresh[1];
+          readiness = fresh[2];
+          settings = fresh[3];
+        }
+
         if (!cancelled) {
           setData({
             auditions: auditions,
