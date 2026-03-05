@@ -628,6 +628,20 @@ function PrepPlanner(props) {
     return t;
   }, [practiceLog, auditions]);
 
+  var practiceByExcerpt = useMemo(function() {
+    var map = {};
+    practiceLog.forEach(function(p) {
+      var a = auditions.find(function(x){return x.id === p.auditionId});
+      if (!a) return;
+      var ex = a.excerpts.find(function(e){return e.id === p.excerptId});
+      if (!ex) return;
+      var key = normExcerpt(ex);
+      if (!map[key]) map[key] = [];
+      map[key].push(p);
+    });
+    return map;
+  }, [practiceLog, auditions]);
+
   var thisWeek = scored.filter(function(e){return e.closestDays <= 7});
   var nextWeeks = scored.filter(function(e){return e.closestDays > 7 && e.closestDays <= 21});
   var later = scored.filter(function(e){return e.closestDays > 21});
@@ -636,6 +650,8 @@ function PrepPlanner(props) {
   function ExRow(rowProps) {
     var ex = rowProps.ex;
     var practiced = practiceTotals[ex.key] || 0;
+    var sessions = practiceByExcerpt[ex.key] || [];
+    var [showHistory, setShowHistory] = useState(false);
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -649,7 +665,18 @@ function PrepPlanner(props) {
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             {ex.numAuditions > 1 && (<span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">x{ex.numAuditions} lists</span>)}
-            {practiced > 0 && (<span className="text-xs text-gray-400">{minsToHM(practiced)} practiced</span>)}
+            {practiced > 0 && (
+              <button
+                onClick={function(){setShowHistory(!showHistory)}}
+                className="text-xs text-indigo-500 hover:text-indigo-700 font-medium flex items-center gap-1 transition-colors"
+              >
+                {minsToHM(practiced)} practiced
+                <span className={"inline-block transition-transform " + (showHistory ? "rotate-180" : "")} style={{fontSize: 10}}>▼</span>
+              </button>
+            )}
+            {sessions.length === 0 && practiced === 0 && (
+              <span className="text-xs text-gray-300 italic">No sessions yet</span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 flex-wrap">
@@ -662,6 +689,52 @@ function PrepPlanner(props) {
             );
           })}
         </div>
+        {showHistory && sessions.length > 0 && (
+          <div className="border-t border-gray-100 pt-2 mt-1 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-500">Practice History</span>
+              <span className="text-xs text-gray-400">{sessions.length} session{sessions.length !== 1 ? "s" : ""}</span>
+            </div>
+            {sessions.map(function(p) {
+              var hasLongNote = p.note && (p.note.length > 60 || p.note.indexOf("\n") >= 0);
+              return (
+                <PlannerSessionRow key={p.id} p={p} hasLongNote={hasLongNote} />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function PlannerSessionRow(rowProps) {
+    var p = rowProps.p;
+    var hasLongNote = rowProps.hasLongNote;
+    var [noteOpen, setNoteOpen] = useState(false);
+    return (
+      <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-gray-400 shrink-0">{fmtDate(p.date)}</span>
+            <span className="text-indigo-600 font-medium shrink-0">{minsToHM(p.minutes)}</span>
+            {p.note && !hasLongNote && (
+              <span className="text-gray-500 truncate">— {p.note}</span>
+            )}
+          </div>
+          {hasLongNote && (
+            <button
+              onClick={function(){setNoteOpen(!noteOpen)}}
+              className="text-indigo-500 hover:text-indigo-700 font-medium ml-2 shrink-0 flex items-center gap-0.5"
+            >
+              📝 {noteOpen ? "hide" : "notes"}
+            </button>
+          )}
+        </div>
+        {noteOpen && p.note && (
+          <div className="mt-1.5 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">
+            {p.note}
+          </div>
+        )}
       </div>
     );
   }
