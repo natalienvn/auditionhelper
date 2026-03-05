@@ -2260,7 +2260,19 @@ export default function App(props) {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <ConductorAvatar mood="happy" size={32} />
-          <span>{(settings.profile && settings.profile.firstName) ? "Hi, " + settings.profile.firstName + "!" : "Audition Tracker"}</span>
+          <span>{(function() {
+            var profile = settings.profile;
+            var name = profile && profile.firstName;
+            var isBirthday = false;
+            if (profile && profile.birthday) {
+              var today = new Date();
+              var bday = new Date(profile.birthday + "T12:00:00");
+              isBirthday = today.getMonth() === bday.getMonth() && today.getDate() === bday.getDate();
+            }
+            if (name && isBirthday) return "Happy Birthday, " + name + "! 🎂";
+            if (name) return "Hi, " + name + "!";
+            return "Audition Tracker";
+          })()}</span>
         </h1>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400 hidden sm:inline">{session.user.email}</span>
