@@ -937,6 +937,23 @@ function PrepPlanner(props) {
   return (
     <div className="space-y-5">
       <RunThroughPanel auditions={auditions} settings={settings} onSwitchTab={onSwitchTab} />
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <h4 className="text-sm font-semibold text-gray-700 mb-1">Full Priority Ranking</h4>
+        <p className="text-xs text-gray-500 mb-3">Scored by deadline + overlap + readiness.</p>
+        <div className="space-y-1">
+          {scored.map(function(ex, i) {
+            return (
+              <div key={ex.key} className="flex items-center gap-2 text-sm py-1">
+                <span className={"w-6 text-right font-bold " + (i < 3 ? "text-red-600" : i < 8 ? "text-amber-600" : "text-gray-400")}>{i + 1}</span>
+                <span className="flex-1 text-gray-800">{ex.label}</span>
+                <span className="text-xs text-gray-400">{ex.closestDays <= 0 ? "past" : ex.closestDays + "d"}</span>
+                {ex.numAuditions > 1 && (<span className="text-xs text-emerald-600">x{ex.numAuditions}</span>)}
+                <RBadge level={ex.readinessLevel} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
       {highROI.length > 0 && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-1">
           <h4 className="text-sm font-semibold text-emerald-800">Highest ROI — on multiple lists</h4>
@@ -957,23 +974,6 @@ function PrepPlanner(props) {
       <Section title="🔴 This Week" sub="Auditions within 7 days" color="text-red-700" items={thisWeek} />
       <Section title="🟡 Next 2-3 Weeks" sub="Auditions within 21 days" color="text-amber-700" items={nextWeeks} />
       <Section title="🟢 Can Build Over Time" sub="21+ days out" color="text-gray-600" items={later} />
-      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-        <h4 className="text-sm font-semibold text-gray-700 mb-1">Full Priority Ranking</h4>
-        <p className="text-xs text-gray-500 mb-3">Scored by deadline + overlap + readiness.</p>
-        <div className="space-y-1">
-          {scored.map(function(ex, i) {
-            return (
-              <div key={ex.key} className="flex items-center gap-2 text-sm py-1">
-                <span className={"w-6 text-right font-bold " + (i < 3 ? "text-red-600" : i < 8 ? "text-amber-600" : "text-gray-400")}>{i + 1}</span>
-                <span className="flex-1 text-gray-800">{ex.label}</span>
-                <span className="text-xs text-gray-400">{ex.closestDays <= 0 ? "past" : ex.closestDays + "d"}</span>
-                {ex.numAuditions > 1 && (<span className="text-xs text-emerald-600">x{ex.numAuditions}</span>)}
-                <RBadge level={ex.readinessLevel} />
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
