@@ -967,7 +967,7 @@ function PrepPlanner(props) {
     );
   }
 
-  var [showRanking, setShowRanking] = useState(false);
+  var [showRanking, setShowRanking] = useState(true);
   var [showROI, setShowROI] = useState(false);
 
   if (!active.length) return (<p className="text-sm text-gray-400 text-center py-8">No active auditions to plan for.</p>);
