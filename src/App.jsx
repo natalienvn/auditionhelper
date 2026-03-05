@@ -2308,7 +2308,7 @@ export default function App(props) {
         </div>
       )}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["milestones","Milestones"],["reflections","Reflections"],["dashboard","Dashboard"],["profile","Profile"],["settings","Settings"]].map(function(item) {
+        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["milestones","Milestones"],["reflections","Reflections"],["profile","Profile"],["settings","Settings"]].map(function(item) {
           return (
             <TabBtn key={item[0]} label={item[1]} active={tab === item[0]} onClick={function(){setTab(item[0])}} alert={(item[0] === "planner" || item[0] === "milestones") && hasActiveMilestones} />
           );
@@ -2377,39 +2377,6 @@ export default function App(props) {
 
       {tab === "reflections" && (
         <ReflectionsTab auditions={data.auditions} reflections={(data.settings || {}).reflections || {}} onSave={saveReflection} />
-      )}
-
-      {tab === "dashboard" && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[["Total", stats.total],["Completed", stats.completed],["Adv / Won", stats.advanced + stats.won],["Adv Rate", stats.advanceRate + "%"]].map(function(item) {
-              return (
-                <div key={item[0]} className="bg-white border border-gray-200 rounded-xl p-3 text-center">
-                  <div className="text-2xl font-bold text-indigo-700">{item[1]}</div>
-                  <div className="text-xs text-gray-500">{item[0]}</div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-3 text-center">
-            <div className="text-2xl font-bold text-indigo-700">{minsToHM(stats.totalPractice)}</div>
-            <div className="text-xs text-gray-500">Total Practice Logged</div>
-          </div>
-          <h4 className="text-sm font-medium text-gray-600">All Auditions</h4>
-          {sorted.length === 0 && (<p className="text-sm text-gray-400">Nothing yet.</p>)}
-          <div className="space-y-2">
-            {sorted.map(function(a) {
-              return (
-                <div key={a.id} className="flex items-center gap-3 text-sm">
-                  <span className="w-24 text-gray-400 text-xs text-right shrink-0">{fmtDate(a.date) || "No date"}</span>
-                  <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
-                  <span className="font-medium text-gray-800">{getShortName(a)}</span>
-                  <Badge status={a.status} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
       )}
 
       {tab === "profile" && (
