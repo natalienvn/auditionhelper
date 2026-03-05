@@ -783,27 +783,59 @@ function PracticeTab(props) {
           </div>
         )}
       </div>
-      {practiceLog.length > 0 && (
-        <div className="space-y-1">
-          <h4 className="text-sm font-medium text-gray-600">Recent Sessions</h4>
-          {practiceLog.slice(0, 30).map(function(p) {
-            return (
-              <div key={p.id} className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2 text-sm">
-                <div>
-                  <span className="font-medium text-gray-700">{p.label}</span>
-                  <span className="text-gray-400 ml-2">({p.short || p.orchestra})</span>
-                  {p.note && (<span className="text-gray-400 ml-2">— {p.note}</span>)}
+      {practiceLog.length > 0 && (function() {
+        var grouped = {};
+        practiceLog.slice(0, 50).forEach(function(p) {
+          var key = p.date || "Unknown";
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(p);
+        });
+        var sortedDates = Object.keys(grouped).sort(function(a, b) {
+          return b.localeCompare(a);
+        });
+        var today = new Date().toISOString().slice(0, 10);
+        var yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+        function dateLabel(d) {
+          if (d === today) return "Today";
+          if (d === yesterday) return "Yesterday";
+          if (d === "Unknown") return "Unknown Date";
+          return fmtDate(d);
+        }
+        function dayTotal(entries) {
+          return entries.reduce(function(s, p) { return s + p.minutes; }, 0);
+        }
+        return (
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium text-gray-600">Recent Sessions</h4>
+            {sortedDates.map(function(date) {
+              var entries = grouped[date];
+              return (
+                <div key={date} className="space-y-1">
+                  <div className="flex items-center justify-between border-b border-gray-200 pb-1 mb-1">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{dateLabel(date)}</span>
+                    <span className="text-xs text-indigo-500 font-medium">{minsToHM(dayTotal(entries))}</span>
+                  </div>
+                  {entries.map(function(p) {
+                    return (
+                      <div key={p.id} className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-700">{p.label}</span>
+                          <span className="text-gray-400 ml-2">({p.short || p.orchestra})</span>
+                          {p.note && (<span className="text-gray-400 ml-2">— {p.note}</span>)}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-indigo-600 font-medium">{minsToHM(p.minutes)}</span>
+                          <button onClick={function(){onDelete(p.id)}} className="text-gray-300 hover:text-red-400">&times;</button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-indigo-600 font-medium">{minsToHM(p.minutes)}</span>
-                  <span className="text-gray-400 text-xs">{fmtDate(p.date)}</span>
-                  <button onClick={function(){onDelete(p.id)}} className="text-gray-300 hover:text-red-400">&times;</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        );
+      })()}
       {practiceLog.length > 0 && (
         <div className="space-y-1">
           <h4 className="text-sm font-medium text-gray-600">Totals by Excerpt</h4>
