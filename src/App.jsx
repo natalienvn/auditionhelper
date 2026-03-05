@@ -1673,6 +1673,37 @@ export default function App(props) {
   var [loading, setLoading] = useState(true);
   var [conductorMessages, setConductorMessages] = useState([]);
 
+  var QUOTES = [
+    "The only way to do great work is to love what you do. — Steve Jobs",
+    "Music expresses that which cannot be said and on which it is impossible to be silent. — Victor Hugo",
+    "Every master was once a disaster. Keep going.",
+    "Practice doesn't make perfect. Practice makes progress.",
+    "You don't have to be great to start, but you have to start to be great. — Zig Ziglar",
+    "The more I practice, the luckier I get. — Gary Player",
+    "Courage is not the absence of fear, but the triumph over it. — Nelson Mandela",
+    "Music is the shorthand of emotion. — Leo Tolstoy",
+    "The stage is not a place to be nervous. It's a place to be alive.",
+    "Believe you can and you're halfway there. — Theodore Roosevelt",
+    "One audition at a time. One excerpt at a time. One note at a time.",
+    "What we play is life. — Louis Armstrong",
+    "Success is not final, failure is not fatal: it is the courage to continue that counts. — Winston Churchill",
+    "The beautiful thing about music is that it's always there waiting for you.",
+    "Don't practice until you get it right. Practice until you can't get it wrong.",
+    "You are braver than you believe, stronger than you seem, and smarter than you think. — A.A. Milne",
+    "Every audition is a chance to share your voice with the world.",
+    "It's not about being the best. It's about being better than you were yesterday.",
+    "The expert in anything was once a beginner. — Helen Hayes",
+    "Play from your heart, and the music will take care of itself.",
+    "Where words fail, music speaks. — Hans Christian Andersen",
+    "Fall seven times, stand up eight. — Japanese Proverb",
+    "You've already survived 100% of your worst days. You're doing great.",
+    "The only limit to our realization of tomorrow is our doubts of today. — Franklin D. Roosevelt",
+    "Trust the hours you've put in. They're all in your fingers.",
+  ];
+  var dailyQuote = useMemo(function() {
+    return QUOTES[Math.floor(Math.random() * QUOTES.length)];
+  }, []);
+
   // Load all data from Supabase on mount, migrate localStorage if needed
   useEffect(function() {
     var cancelled = false;
@@ -1876,6 +1907,7 @@ export default function App(props) {
           <Btn variant="ghost" onClick={handleSignOut} className="text-xs">Sign Out</Btn>
         </div>
       </div>
+      <p className="text-xs text-gray-400 italic -mt-2">{dailyQuote}</p>
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
         {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["reflections","Reflections"],["dashboard","Dashboard"],["settings","Settings"]].map(function(item) {
           return (
