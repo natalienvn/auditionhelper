@@ -853,39 +853,36 @@ function NotepadModal(props) {
   var value = props.value;
   var onChange = props.onChange;
   var onClose = props.onClose;
+  var excerptLabel = props.excerptLabel || "";
+  var minutes = props.minutes || "";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-amber-50 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden" style={{height: "min(520px, 75vh)"}} onClick={function(e){e.stopPropagation()}}>
-        {/* Notepad header */}
-        <div className="bg-amber-100 border-b border-amber-200 px-5 py-3 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden" style={{height: "min(520px, 75vh)"}} onClick={function(e){e.stopPropagation()}}>
+        <div className="border-b border-gray-100 px-5 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-lg">📝</span>
-            <span className="font-semibold text-amber-900 text-sm">Practice Notes</span>
+            <span className="font-semibold text-gray-800 text-sm">Practice Notes</span>
           </div>
-          <button onClick={onClose} className="text-amber-400 hover:text-amber-700 text-lg transition-colors">✕</button>
+          <button onClick={onClose} className="text-gray-300 hover:text-gray-600 text-lg transition-colors">✕</button>
         </div>
-        {/* Lined notepad area */}
-        <div className="flex-1 relative overflow-hidden">
-          {/* Red margin line */}
-          <div className="absolute left-10 top-0 bottom-0 w-px bg-red-300 opacity-50 z-10" />
+        {(excerptLabel || minutes) && (
+          <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-3">
+            {excerptLabel && <span className="text-sm text-indigo-700 font-medium">{excerptLabel}</span>}
+            {minutes && <span className="text-xs text-gray-400 bg-white border border-gray-200 rounded-full px-2 py-0.5">{minutes} min</span>}
+          </div>
+        )}
+        <div className="flex-1 overflow-hidden">
           <textarea
-            className="w-full h-full resize-none px-14 py-4 text-sm text-gray-800 bg-transparent focus:outline-none leading-7"
-            style={{
-              backgroundImage: "repeating-linear-gradient(transparent, transparent 27px, #d4b896 27px, #d4b896 28px)",
-              backgroundSize: "100% 28px",
-              lineHeight: "28px",
-              fontFamily: "'Georgia', serif",
-            }}
+            className="w-full h-full resize-none px-5 py-4 text-sm text-gray-800 bg-white focus:outline-none leading-relaxed"
             value={value}
             onChange={function(e){onChange(e.target.value)}}
             placeholder="What did you work on? How did it feel? What needs attention next time?&#10;&#10;Write as much as you want..."
             autoFocus
           />
         </div>
-        {/* Footer */}
-        <div className="bg-amber-100 border-t border-amber-200 px-5 py-3 flex items-center justify-between">
-          <span className="text-xs text-amber-600">{value.length > 0 ? value.split(/\s+/).filter(Boolean).length + " words" : "Start writing..."}</span>
-          <button onClick={onClose} className="bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors">
+        <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-between">
+          <span className="text-xs text-gray-400">{value.length > 0 ? value.split(/\s+/).filter(Boolean).length + " words" : "Start writing..."}</span>
+          <button onClick={onClose} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors">
             Done
           </button>
         </div>
@@ -915,7 +912,7 @@ function ExpandableNote(props) {
   }
   return (
     <div className="mt-1.5 ml-0">
-      <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap" style={{fontFamily: "'Georgia', serif"}}>
+      <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">
         {note}
       </div>
       <button onClick={function(e){e.stopPropagation(); setExpanded(false)}} className="text-indigo-500 hover:text-indigo-700 text-xs mt-1 font-medium">
@@ -986,15 +983,15 @@ function PracticeTab(props) {
             <div className="flex items-start gap-2">
               <button
                 onClick={function(){setNotepadOpen(true)}}
-                className={"flex items-center gap-2 text-sm px-3 py-2 rounded-lg border transition-colors w-full text-left " + (note ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600")}
+                className={"flex items-center gap-2 text-sm px-3 py-2 rounded-lg border transition-colors w-full text-left " + (note ? "bg-indigo-50 border-indigo-200 text-indigo-800" : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600")}
               >
                 <span>📝</span>
                 {note ? (
-                  <span className="flex-1 truncate" style={{fontFamily: "'Georgia', serif"}}>{note.split("\n")[0]}</span>
+                  <span className="flex-1 truncate">{note.split("\n")[0]}</span>
                 ) : (
                   <span className="flex-1">Add practice notes...</span>
                 )}
-                {note && <span className="text-xs text-amber-500 shrink-0">{note.split(/\s+/).filter(Boolean).length}w</span>}
+                {note && <span className="text-xs text-indigo-400 shrink-0">{note.split(/\s+/).filter(Boolean).length}w</span>}
               </button>
               {note && (
                 <button onClick={function(){setNote("")}} className="text-gray-300 hover:text-red-400 mt-2 shrink-0" title="Clear note">&times;</button>
@@ -1003,9 +1000,11 @@ function PracticeTab(props) {
           </div>
         )}
       </div>
-      {notepadOpen && (
-        <NotepadModal value={note} onChange={setNote} onClose={function(){setNotepadOpen(false)}} />
-      )}
+      {notepadOpen && (function() {
+        var selEx = sel ? allEx.find(function(e){return e.excerptId === sel}) : null;
+        var label = selEx ? selEx.short + ": " + selEx.label : "";
+        return <NotepadModal value={note} onChange={setNote} onClose={function(){setNotepadOpen(false)}} excerptLabel={label} minutes={mins} />;
+      })()}
       {practiceLog.length > 0 && (function() {
         var grouped = {};
         practiceLog.slice(0, 50).forEach(function(p) {
