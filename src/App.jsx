@@ -981,21 +981,75 @@ function PracticeTab(props) {
   );
 }
 
+function ConductorAvatar(props) {
+  var mood = props.mood || "idle";
+  var size = props.size || 48;
+  // Cartoon conductor: round face, top hat, baton, expressive eyes
+  var eyeL = mood === "thinking" ? "—" : mood === "happy" ? "◠" : "●";
+  var eyeR = mood === "thinking" ? "—" : mood === "happy" ? "◠" : "●";
+  var mouth = mood === "happy" ? "◡" : mood === "thinking" ? "○" : "‿";
+  var hatTilt = mood === "happy" ? -5 : mood === "thinking" ? 5 : 0;
+  var batonAngle = mood === "thinking" ? 20 : mood === "happy" ? -15 : 0;
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" className={mood === "thinking" ? "animate-pulse" : ""}>
+      {/* Body / coat */}
+      <ellipse cx="50" cy="88" rx="22" ry="14" fill="#1e1b4b" />
+      {/* White shirt front */}
+      <ellipse cx="50" cy="85" rx="10" ry="8" fill="white" opacity="0.9" />
+      {/* Bow tie */}
+      <polygon points="45,78 50,81 55,78 55,84 50,81 45,84" fill="#ef4444" />
+      {/* Head */}
+      <circle cx="50" cy="55" r="22" fill="#fcd34d" />
+      {/* Rosy cheeks */}
+      <circle cx="36" cy="60" r="5" fill="#fca5a5" opacity="0.5" />
+      <circle cx="64" cy="60" r="5" fill="#fca5a5" opacity="0.5" />
+      {/* Eyes */}
+      <text x="40" y="56" textAnchor="middle" fontSize="10" fill="#1e1b4b">{eyeL}</text>
+      <text x="60" y="56" textAnchor="middle" fontSize="10" fill="#1e1b4b">{eyeR}</text>
+      {/* Mouth */}
+      <text x="50" y="68" textAnchor="middle" fontSize={mood === "happy" ? "14" : "10"} fill="#1e1b4b">{mouth}</text>
+      {/* Top hat */}
+      <g transform={"rotate(" + hatTilt + " 50 30)"}>
+        <rect x="32" y="18" width="36" height="22" rx="3" fill="#1e1b4b" />
+        <rect x="27" y="37" width="46" height="5" rx="2" fill="#1e1b4b" />
+        <rect x="34" y="30" width="32" height="3" rx="1" fill="#6366f1" />
+      </g>
+      {/* Baton */}
+      <g transform={"rotate(" + batonAngle + " 76 70)"}>
+        <line x1="74" y1="70" x2="96" y2="50" stroke="#92400e" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="96" cy="49" r="2" fill="white" />
+      </g>
+    </svg>
+  );
+}
+
 function ConductorChat(props) {
   var auditions = props.auditions;
   var practiceLog = props.practiceLog;
   var readiness = props.readiness;
   var [open, setOpen] = useState(false);
-  var [messages, setMessages] = useState([]);
+  var messages = props.messages;
+  var setMessages = props.onSetMessages;
   var [input, setInput] = useState("");
   var [loading, setLoading] = useState(false);
   var messagesEndRef = useRef(null);
+
+  var mood = loading ? "thinking" : messages.length > 0 && messages[messages.length - 1].role === "assistant" ? "happy" : "idle";
 
   useEffect(function() {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({behavior: "smooth"});
     }
   }, [messages]);
+
+  // Idle greetings based on time of day
+  function getGreeting() {
+    var h = new Date().getHours();
+    if (h < 12) return "Good morning! Ready to warm up?";
+    if (h < 17) return "Good afternoon! Let's make today count.";
+    if (h < 21) return "Good evening! Perfect time for some focused practice.";
+    return "Burning the midnight oil? I admire the dedication!";
+  }
 
   function buildContext() {
     var active = auditions.filter(function(a) {
@@ -1021,7 +1075,6 @@ function ConductorChat(props) {
         });
       }
     });
-    // Practice summary
     var totalMins = practiceLog.reduce(function(s,p){return s + p.minutes}, 0);
     var last7 = practiceLog.filter(function(p) {
       if (!p.date) return false;
@@ -1034,7 +1087,6 @@ function ConductorChat(props) {
     lines.push("PRACTICE SUMMARY:");
     lines.push("- Total all time: " + minsToHM(totalMins));
     lines.push("- Last 7 days: " + minsToHM(last7Mins) + " across " + last7.length + " sessions");
-    // Recent practice by excerpt
     var byExcerpt = {};
     practiceLog.slice(0, 50).forEach(function(p) {
       if (!byExcerpt[p.label]) byExcerpt[p.label] = {minutes: 0, notes: [], orchestra: p.short || p.orchestra};
@@ -1054,34 +1106,37 @@ function ConductorChat(props) {
     return lines.join("\n");
   }
 
-  async function send() {
-    if (!input.trim() || loading) return;
-    var userMsg = input.trim();
-    setInput("");
-    var newMessages = messages.concat([{role: "user", content: userMsg}]);
+  async function send(overrideMsg) {
+    var msgText = overrideMsg || input.trim();
+    if (!msgText || loading) return;
+    if (!overrideMsg) setInput("");
+    var newMessages = messages.concat([{role: "user", content: msgText}]);
     setMessages(newMessages);
     setLoading(true);
 
     try {
       var context = buildContext();
-      var systemPrompt = "You are the Conductor — an expert orchestral audition coach embedded in an audition preparation app. You have deep knowledge of orchestral repertoire, audition technique, and practice strategy.\n\n" +
+      var systemPrompt = "You are the Conductor — a warm, wise, and slightly witty orchestral audition coach. Think of yourself as a favorite teacher who's been through hundreds of auditions. You're embedded in a musician's audition prep app.\n\n" +
         "Here is the musician's current data:\n\n" + context + "\n\n" +
-        "Your role:\n" +
+        "Your personality:\n" +
+        "- Warm and encouraging, but honest. You celebrate wins and gently nudge when something needs attention.\n" +
+        "- Use occasional musical metaphors and humor (but don't overdo it)\n" +
+        "- You might say things like 'Brava!' or 'Let's tune this up' or 'From the top...'\n" +
+        "- Be specific — reference their actual excerpts, deadlines, and notes by name\n" +
+        "- Keep responses concise (2-3 short paragraphs max) since this is a small chat widget\n\n" +
+        "Your expertise:\n" +
         "1. Synthesize their practice notes and give actionable feedback\n" +
         "2. Suggest what to focus on based on deadlines, readiness levels, and practice history\n" +
         "3. Give specific technical tips for excerpts (tempo, style, common pitfalls, what committees listen for)\n" +
-        "4. Be encouraging but direct — like a great teacher\n" +
-        "5. Keep responses concise (2-4 short paragraphs max) since this is a chat widget\n" +
-        "6. If they haven't practiced something that's coming up soon, flag it kindly\n" +
-        "7. Reference their specific data naturally (don't just list it back)";
+        "4. If they haven't practiced something coming up soon, flag it kindly\n" +
+        "5. Help with audition nerves, mental preparation, and performance psychology";
 
       var apiMessages = [{role: "user", content: systemPrompt + "\n\nConversation so far:\n" + newMessages.map(function(m) { return m.role + ": " + m.content; }).join("\n")}];
 
-      // If there's conversation history, structure it properly
       if (newMessages.length > 1) {
         apiMessages = [
           {role: "user", content: systemPrompt + "\n\nPlease respond to the conversation below."},
-          {role: "assistant", content: "Understood. I'm the Conductor, ready to help with audition prep."}
+          {role: "assistant", content: "Of course! I'm here and ready to help."}
         ];
         newMessages.forEach(function(m) {
           apiMessages.push({role: m.role === "user" ? "user" : "assistant", content: m.content});
@@ -1107,55 +1162,76 @@ function ConductorChat(props) {
       setMessages(function(prev) { return prev.concat([{role: "assistant", content: text}]); });
     } catch(err) {
       console.error("Conductor chat error:", err);
-      setMessages(function(prev) { return prev.concat([{role: "assistant", content: "Sorry, I couldn't connect. Make sure your API key is configured."}]); });
+      setMessages(function(prev) { return prev.concat([{role: "assistant", content: "Hmm, I seem to have lost my baton for a moment. Check that your API key is set up and try again!"}]); });
     }
     setLoading(false);
   }
 
   var quickPrompts = [
-    "What should I focus on today?",
-    "Summarize my practice notes",
-    "Tips for my most urgent excerpts",
-    "Am I on track for my next audition?"
+    {icon: "🎯", text: "What should I focus on today?"},
+    {icon: "📋", text: "Summarize my practice notes"},
+    {icon: "🔥", text: "Tips for my most urgent excerpts"},
+    {icon: "🧠", text: "Help me with audition nerves"},
   ];
 
   return (
     <>
-      {/* Floating button */}
-      <button
-        onClick={function(){setOpen(!open)}}
-        className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg flex items-center justify-center text-2xl transition-transform hover:scale-105"
-        title="Talk to the Conductor"
-      >
-        {open ? "✕" : "🎼"}
-      </button>
+      {/* Floating conductor button */}
+      <div className="fixed bottom-5 right-5 z-40 flex flex-col items-center gap-1">
+        {!open && !loading && (
+          <div className="bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-md text-xs text-gray-600 animate-bounce mb-1" style={{animationDuration: "2s", animationIterationCount: 3}}>
+            Need help? 🎶
+          </div>
+        )}
+        <button
+          onClick={function(){setOpen(!open)}}
+          className={"rounded-full shadow-lg flex items-center justify-center transition-all duration-300 " + (open ? "w-12 h-12 bg-gray-100 hover:bg-gray-200" : "w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700")}
+          title="Talk to the Conductor"
+        >
+          {open ? (
+            <span className="text-gray-500 text-lg">✕</span>
+          ) : (
+            <ConductorAvatar mood={mood} size={52} />
+          )}
+        </button>
+      </div>
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-22 right-5 z-40 w-80 sm:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col" style={{height: 480, maxHeight: "70vh"}}>
+        <div className="fixed bottom-20 right-5 z-40 w-80 sm:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col" style={{height: 500, maxHeight: "72vh"}}>
           {/* Header */}
-          <div className="bg-indigo-600 text-white px-4 py-3 rounded-t-2xl flex items-center gap-2">
-            <span className="text-xl">🎼</span>
-            <div>
-              <div className="font-semibold text-sm">The Conductor</div>
-              <div className="text-xs text-indigo-200">Your audition coach</div>
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-3 rounded-t-2xl flex items-center gap-3">
+            <div className="bg-white bg-opacity-20 rounded-full p-0.5">
+              <ConductorAvatar mood={mood} size={36} />
             </div>
+            <div className="flex-1">
+              <div className="font-semibold text-sm">The Conductor</div>
+              <div className="text-xs text-indigo-200">{loading ? "Composing a response..." : "Your audition coach"}</div>
+            </div>
+            {messages.length > 0 && (
+              <button onClick={function(){setMessages([])}} className="text-indigo-200 hover:text-white text-xs px-2 py-1 rounded hover:bg-white hover:bg-opacity-20 transition-colors" title="Start fresh">
+                New chat
+              </button>
+            )}
           </div>
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{minHeight: 0}}>
             {messages.length === 0 && (
               <div className="space-y-3">
-                <div className="bg-indigo-50 rounded-xl px-3 py-2 text-sm text-indigo-800">
-                  <p className="font-medium">Welcome! I'm your audition coach.</p>
-                  <p className="text-xs mt-1 text-indigo-600">I can see your auditions, excerpts, readiness levels, and practice history. Ask me anything!</p>
+                <div className="flex gap-2 items-start">
+                  <div className="shrink-0 mt-0.5"><ConductorAvatar mood="happy" size={28} /></div>
+                  <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl rounded-tl-sm px-3 py-2 text-sm text-gray-800">
+                    <p className="font-medium">{getGreeting()}</p>
+                    <p className="text-xs mt-1 text-gray-500">I know your auditions, excerpts, and practice history. Let's make beautiful music! 🎵</p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-400 px-1">Quick start:</p>
+                <div className="grid grid-cols-2 gap-1.5 px-1">
                   {quickPrompts.map(function(q) {
                     return (
-                      <button key={q} onClick={function(){setInput(q)}} className="block w-full text-left text-xs bg-gray-50 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg px-3 py-2 transition-colors">
-                        {q}
+                      <button key={q.text} onClick={function(){send(q.text)}} className="flex items-center gap-1.5 text-left text-xs bg-gray-50 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg px-2.5 py-2 transition-colors border border-gray-100 hover:border-indigo-200">
+                        <span>{q.icon}</span>
+                        <span>{q.text}</span>
                       </button>
                     );
                   })}
@@ -1165,17 +1241,23 @@ function ConductorChat(props) {
             {messages.map(function(m, i) {
               var isUser = m.role === "user";
               return (
-                <div key={i} className={"flex " + (isUser ? "justify-end" : "justify-start")}>
-                  <div className={(isUser ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-800") + " rounded-xl px-3 py-2 max-w-[85%] text-sm whitespace-pre-wrap"}>
+                <div key={i} className={"flex gap-2 " + (isUser ? "justify-end" : "justify-start")}>
+                  {!isUser && <div className="shrink-0 mt-0.5"><ConductorAvatar mood="happy" size={24} /></div>}
+                  <div className={(isUser ? "bg-indigo-600 text-white rounded-xl rounded-tr-sm" : "bg-gray-50 text-gray-800 border border-gray-100 rounded-xl rounded-tl-sm") + " px-3 py-2 max-w-[80%] text-sm whitespace-pre-wrap"}>
                     {m.content}
                   </div>
                 </div>
               );
             })}
             {loading && (
-              <div className="flex justify-start">
-                <div className="bg-gray-100 rounded-xl px-3 py-2 text-sm text-gray-400">
-                  <span className="animate-pulse">Thinking...</span>
+              <div className="flex gap-2 justify-start">
+                <div className="shrink-0 mt-0.5"><ConductorAvatar mood="thinking" size={24} /></div>
+                <div className="bg-gray-50 border border-gray-100 rounded-xl rounded-tl-sm px-3 py-2 text-sm text-gray-400">
+                  <span className="inline-flex gap-1">
+                    <span className="animate-bounce" style={{animationDelay: "0ms"}}>♪</span>
+                    <span className="animate-bounce" style={{animationDelay: "150ms"}}>♫</span>
+                    <span className="animate-bounce" style={{animationDelay: "300ms"}}>♪</span>
+                  </span>
                 </div>
               </div>
             )}
@@ -1186,23 +1268,23 @@ function ConductorChat(props) {
           <div className="border-t border-gray-100 p-3">
             <div className="flex gap-2">
               <input
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
                 value={input}
                 onChange={function(e){setInput(e.target.value)}}
                 onKeyDown={function(e){if(e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }}}
-                placeholder="Ask the Conductor..."
+                placeholder="Ask me anything..."
                 disabled={loading}
               />
               <button
-                onClick={send}
+                onClick={function(){send()}}
                 disabled={loading || !input.trim()}
-                className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-40"
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white w-10 h-10 rounded-xl flex items-center justify-center text-sm font-medium hover:from-indigo-700 hover:to-purple-700 transition-colors disabled:opacity-40"
               >
-                →
+                ↑
               </button>
             </div>
             {!API_KEY && (
-              <p className="text-xs text-red-400 mt-1">Set VITE_ANTHROPIC_API_KEY to enable the Conductor.</p>
+              <p className="text-xs text-red-400 mt-1.5 text-center">Set VITE_ANTHROPIC_API_KEY to enable the Conductor.</p>
             )}
           </div>
         </div>
@@ -1235,6 +1317,7 @@ export default function App(props) {
   var [tab, setTab] = useState("auditions");
   var [editing, setEditing] = useState(null);
   var [loading, setLoading] = useState(true);
+  var [conductorMessages, setConductorMessages] = useState([]);
 
   // Load all data from Supabase on mount, migrate localStorage if needed
   useEffect(function() {
@@ -1532,7 +1615,7 @@ export default function App(props) {
       )}
 
       {(tab === "practice" || tab === "planner") && (
-        <ConductorChat auditions={data.auditions} practiceLog={data.practiceLog} readiness={data.readiness || {}} />
+        <ConductorChat auditions={data.auditions} practiceLog={data.practiceLog} readiness={data.readiness || {}} messages={conductorMessages} onSetMessages={setConductorMessages} />
       )}
     </div>
   );
