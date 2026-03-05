@@ -1881,6 +1881,86 @@ function ReflectionsTab(props) {
   );
 }
 
+var INSTRUMENTS = [
+  "Violin","Viola","Cello","Double Bass",
+  "Flute","Oboe","Clarinet","Bassoon",
+  "French Horn","Trumpet","Trombone","Bass Trombone","Tuba",
+  "Percussion","Timpani","Harp","Piano","Other"
+];
+
+function ProfileTab(props) {
+  var profile = props.profile;
+  var onSave = props.onSave;
+
+  var [f, setF] = useState({
+    firstName: (profile && profile.firstName) || "",
+    lastName: (profile && profile.lastName) || "",
+    instrument: (profile && profile.instrument) || "",
+    birthday: (profile && profile.birthday) || "",
+    bio: (profile && profile.bio) || "",
+    teacher: (profile && profile.teacher) || "",
+    currentEnsemble: (profile && profile.currentEnsemble) || "",
+    yearsPlaying: (profile && profile.yearsPlaying) || "",
+  });
+  var [saved, setSaved] = useState(false);
+
+  function update(key, val) {
+    setF(function(prev) { return {...prev, [key]: val}; });
+    setSaved(false);
+  }
+
+  function save() {
+    onSave(f);
+    setSaved(true);
+    setTimeout(function() { setSaved(false); }, 2000);
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-2xl shrink-0">
+            {f.firstName ? f.firstName[0].toUpperCase() : "🎵"}
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-800">Your Profile</h3>
+            <p className="text-xs text-gray-400">This personalizes your experience.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Inp label="First Name" value={f.firstName} onChange={function(e){update("firstName", e.target.value)}} placeholder="Natalie" />
+          <Inp label="Last Name" value={f.lastName} onChange={function(e){update("lastName", e.target.value)}} placeholder="Smith" />
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-600">Instrument</label>
+            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white" value={f.instrument} onChange={function(e){update("instrument", e.target.value)}}>
+              <option value="">Select...</option>
+              {INSTRUMENTS.map(function(inst) { return <option key={inst} value={inst}>{inst}</option>; })}
+            </select>
+          </div>
+          <Inp label="Birthday" type="date" value={f.birthday} onChange={function(e){update("birthday", e.target.value)}} />
+          <Inp label="Teacher / Mentor" value={f.teacher} onChange={function(e){update("teacher", e.target.value)}} placeholder="Prof. Johnson" />
+          <Inp label="Current Ensemble" value={f.currentEnsemble} onChange={function(e){update("currentEnsemble", e.target.value)}} placeholder="City Symphony" />
+          <Inp label="Years Playing" type="number" value={f.yearsPlaying} onChange={function(e){update("yearsPlaying", e.target.value)}} placeholder="12" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-600">About / Goals</label>
+          <textarea
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none leading-relaxed"
+            rows={3}
+            value={f.bio}
+            onChange={function(e){update("bio", e.target.value)}}
+            placeholder="Your musical goals, what you're working toward..."
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <Btn onClick={save}>Save Profile</Btn>
+          {saved && <span className="text-sm text-green-600 font-medium">Saved!</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function exportCSV(data) {
   var rows = [["Orchestra","Short Name","Date","Location","Status","Round","Notes","Excerpts"]];
   data.auditions.forEach(function(a) {
@@ -2102,6 +2182,12 @@ export default function App(props) {
     await updateSettings(updated);
   }
 
+  async function saveProfile(profile) {
+    var s = data.settings || DEFAULT_SETTINGS;
+    var updated = {...s, profile: profile};
+    await updateSettings(updated);
+  }
+
   async function handleSignOut() {
     await supabase.auth.signOut();
   }
@@ -2174,7 +2260,7 @@ export default function App(props) {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <ConductorAvatar mood="happy" size={32} />
-          <span>Audition Tracker</span>
+          <span>{(settings.profile && settings.profile.firstName) ? "Hi, " + settings.profile.firstName + "!" : "Audition Tracker"}</span>
         </h1>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400 hidden sm:inline">{session.user.email}</span>
@@ -2210,7 +2296,7 @@ export default function App(props) {
         </div>
       )}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["milestones","Milestones"],["reflections","Reflections"],["dashboard","Dashboard"],["settings","Settings"]].map(function(item) {
+        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["milestones","Milestones"],["reflections","Reflections"],["dashboard","Dashboard"],["profile","Profile"],["settings","Settings"]].map(function(item) {
           return (
             <TabBtn key={item[0]} label={item[1]} active={tab === item[0]} onClick={function(){setTab(item[0])}} alert={(item[0] === "planner" || item[0] === "milestones") && hasActiveMilestones} />
           );
@@ -2312,6 +2398,10 @@ export default function App(props) {
             })}
           </div>
         </div>
+      )}
+
+      {tab === "profile" && (
+        <ProfileTab profile={(data.settings || {}).profile || {}} onSave={saveProfile} />
       )}
 
       {tab === "settings" && (
