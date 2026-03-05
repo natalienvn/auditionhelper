@@ -981,6 +981,236 @@ function PracticeTab(props) {
   );
 }
 
+function ConductorChat(props) {
+  var auditions = props.auditions;
+  var practiceLog = props.practiceLog;
+  var readiness = props.readiness;
+  var [open, setOpen] = useState(false);
+  var [messages, setMessages] = useState([]);
+  var [input, setInput] = useState("");
+  var [loading, setLoading] = useState(false);
+  var messagesEndRef = useRef(null);
+
+  useEffect(function() {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({behavior: "smooth"});
+    }
+  }, [messages]);
+
+  function buildContext() {
+    var active = auditions.filter(function(a) {
+      return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0;
+    });
+    var lines = [];
+    lines.push("AUDITION DATA:");
+    if (active.length === 0) {
+      lines.push("No active auditions.");
+    }
+    active.forEach(function(a) {
+      var d = daysUntil(a.date);
+      lines.push("");
+      lines.push("- " + a.orchestra + " (" + getShortName(a) + ") — " + (a.date ? fmtDate(a.date) + " (" + (d > 0 ? d + " days away" : "past") + ")" : "No date set") + " — Status: " + a.status);
+      if (a.round) lines.push("  Round: " + a.round);
+      if (a.notes) lines.push("  Notes: " + a.notes);
+      if (a.excerpts && a.excerpts.length > 0) {
+        lines.push("  Excerpts:");
+        a.excerpts.forEach(function(e) {
+          var key = normExcerpt(e);
+          var rLevel = (readiness || {})[key] || "Not Started";
+          lines.push("    · " + excLabel(e) + " — Readiness: " + rLevel);
+        });
+      }
+    });
+    // Practice summary
+    var totalMins = practiceLog.reduce(function(s,p){return s + p.minutes}, 0);
+    var last7 = practiceLog.filter(function(p) {
+      if (!p.date) return false;
+      var d = new Date(p.date + "T12:00:00");
+      var now = new Date();
+      return (now - d) < 7 * 864e5;
+    });
+    var last7Mins = last7.reduce(function(s,p){return s + p.minutes}, 0);
+    lines.push("");
+    lines.push("PRACTICE SUMMARY:");
+    lines.push("- Total all time: " + minsToHM(totalMins));
+    lines.push("- Last 7 days: " + minsToHM(last7Mins) + " across " + last7.length + " sessions");
+    // Recent practice by excerpt
+    var byExcerpt = {};
+    practiceLog.slice(0, 50).forEach(function(p) {
+      if (!byExcerpt[p.label]) byExcerpt[p.label] = {minutes: 0, notes: [], orchestra: p.short || p.orchestra};
+      byExcerpt[p.label].minutes += p.minutes;
+      if (p.note) byExcerpt[p.label].notes.push(p.note);
+    });
+    var excKeys = Object.keys(byExcerpt);
+    if (excKeys.length > 0) {
+      lines.push("");
+      lines.push("PRACTICE BY EXCERPT (recent):");
+      excKeys.forEach(function(k) {
+        var e = byExcerpt[k];
+        lines.push("- " + k + " (" + e.orchestra + "): " + minsToHM(e.minutes));
+        if (e.notes.length > 0) lines.push("  Practice notes: " + e.notes.join("; "));
+      });
+    }
+    return lines.join("\n");
+  }
+
+  async function send() {
+    if (!input.trim() || loading) return;
+    var userMsg = input.trim();
+    setInput("");
+    var newMessages = messages.concat([{role: "user", content: userMsg}]);
+    setMessages(newMessages);
+    setLoading(true);
+
+    try {
+      var context = buildContext();
+      var systemPrompt = "You are the Conductor — an expert orchestral audition coach embedded in an audition preparation app. You have deep knowledge of orchestral repertoire, audition technique, and practice strategy.\n\n" +
+        "Here is the musician's current data:\n\n" + context + "\n\n" +
+        "Your role:\n" +
+        "1. Synthesize their practice notes and give actionable feedback\n" +
+        "2. Suggest what to focus on based on deadlines, readiness levels, and practice history\n" +
+        "3. Give specific technical tips for excerpts (tempo, style, common pitfalls, what committees listen for)\n" +
+        "4. Be encouraging but direct — like a great teacher\n" +
+        "5. Keep responses concise (2-4 short paragraphs max) since this is a chat widget\n" +
+        "6. If they haven't practiced something that's coming up soon, flag it kindly\n" +
+        "7. Reference their specific data naturally (don't just list it back)";
+
+      var apiMessages = [{role: "user", content: systemPrompt + "\n\nConversation so far:\n" + newMessages.map(function(m) { return m.role + ": " + m.content; }).join("\n")}];
+
+      // If there's conversation history, structure it properly
+      if (newMessages.length > 1) {
+        apiMessages = [
+          {role: "user", content: systemPrompt + "\n\nPlease respond to the conversation below."},
+          {role: "assistant", content: "Understood. I'm the Conductor, ready to help with audition prep."}
+        ];
+        newMessages.forEach(function(m) {
+          apiMessages.push({role: m.role === "user" ? "user" : "assistant", content: m.content});
+        });
+      }
+
+      var resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 800,
+          messages: apiMessages
+        })
+      });
+      var data = await resp.json();
+      var text = (data.content || []).map(function(b){return b.text || ""}).join("");
+      setMessages(function(prev) { return prev.concat([{role: "assistant", content: text}]); });
+    } catch(err) {
+      console.error("Conductor chat error:", err);
+      setMessages(function(prev) { return prev.concat([{role: "assistant", content: "Sorry, I couldn't connect. Make sure your API key is configured."}]); });
+    }
+    setLoading(false);
+  }
+
+  var quickPrompts = [
+    "What should I focus on today?",
+    "Summarize my practice notes",
+    "Tips for my most urgent excerpts",
+    "Am I on track for my next audition?"
+  ];
+
+  return (
+    <>
+      {/* Floating button */}
+      <button
+        onClick={function(){setOpen(!open)}}
+        className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg flex items-center justify-center text-2xl transition-transform hover:scale-105"
+        title="Talk to the Conductor"
+      >
+        {open ? "✕" : "🎼"}
+      </button>
+
+      {/* Chat panel */}
+      {open && (
+        <div className="fixed bottom-22 right-5 z-40 w-80 sm:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col" style={{height: 480, maxHeight: "70vh"}}>
+          {/* Header */}
+          <div className="bg-indigo-600 text-white px-4 py-3 rounded-t-2xl flex items-center gap-2">
+            <span className="text-xl">🎼</span>
+            <div>
+              <div className="font-semibold text-sm">The Conductor</div>
+              <div className="text-xs text-indigo-200">Your audition coach</div>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{minHeight: 0}}>
+            {messages.length === 0 && (
+              <div className="space-y-3">
+                <div className="bg-indigo-50 rounded-xl px-3 py-2 text-sm text-indigo-800">
+                  <p className="font-medium">Welcome! I'm your audition coach.</p>
+                  <p className="text-xs mt-1 text-indigo-600">I can see your auditions, excerpts, readiness levels, and practice history. Ask me anything!</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-400 px-1">Quick start:</p>
+                  {quickPrompts.map(function(q) {
+                    return (
+                      <button key={q} onClick={function(){setInput(q)}} className="block w-full text-left text-xs bg-gray-50 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg px-3 py-2 transition-colors">
+                        {q}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {messages.map(function(m, i) {
+              var isUser = m.role === "user";
+              return (
+                <div key={i} className={"flex " + (isUser ? "justify-end" : "justify-start")}>
+                  <div className={(isUser ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-800") + " rounded-xl px-3 py-2 max-w-[85%] text-sm whitespace-pre-wrap"}>
+                    {m.content}
+                  </div>
+                </div>
+              );
+            })}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-gray-100 rounded-xl px-3 py-2 text-sm text-gray-400">
+                  <span className="animate-pulse">Thinking...</span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input */}
+          <div className="border-t border-gray-100 p-3">
+            <div className="flex gap-2">
+              <input
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                value={input}
+                onChange={function(e){setInput(e.target.value)}}
+                onKeyDown={function(e){if(e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }}}
+                placeholder="Ask the Conductor..."
+                disabled={loading}
+              />
+              <button
+                onClick={send}
+                disabled={loading || !input.trim()}
+                className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-40"
+              >
+                →
+              </button>
+            </div>
+            {!API_KEY && (
+              <p className="text-xs text-red-400 mt-1">Set VITE_ANTHROPIC_API_KEY to enable the Conductor.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function exportCSV(data) {
   var rows = [["Orchestra","Short Name","Date","Location","Status","Round","Notes","Excerpts"]];
   data.auditions.forEach(function(a) {
@@ -1299,6 +1529,10 @@ export default function App(props) {
 
       {tab === "settings" && (
         <SettingsPanel settings={settings} onUpdate={updateSettings} />
+      )}
+
+      {(tab === "practice" || tab === "planner") && (
+        <ConductorChat auditions={data.auditions} practiceLog={data.practiceLog} readiness={data.readiness || {}} />
       )}
     </div>
   );
