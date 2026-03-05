@@ -844,8 +844,6 @@ function PracticeChart(props) {
       </div>
       <div className="text-center text-xs text-gray-400">
         Total: <span className="text-indigo-600 font-medium">{minsToHM(chartData.reduce(function(s,d){return s+d.value},0))}</span>
-        {" · "}Avg: <span className="text-indigo-600 font-medium">{minsToHM(Math.round(chartData.reduce(function(s,d){return s+d.value},0) / chartData.length))}</span>
-        /{ range === "weeks" ? "wk" : range === "months" ? "mo" : "day"}
       </div>
     </div>
   );
