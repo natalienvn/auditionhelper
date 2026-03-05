@@ -805,7 +805,7 @@ function PracticeChart(props) {
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-gray-700">📊 Practice Overview</h4>
         <div className="flex gap-1">
-          {[["3days","3 Days"],["7days","7 Days"],["14days","14 Days"],["weeks","8 Weeks"],["months","6 Months"]].map(function(item) {
+          {[["7days","7 Days"],["14days","14 Days"],["weeks","8 Weeks"],["months","6 Months"]].map(function(item) {
             return (
               <button key={item[0]} onClick={function(){setRange(item[0])}} className={"text-xs px-2 py-1 rounded transition-colors " + (range === item[0] ? "bg-indigo-100 text-indigo-700 font-medium" : "text-gray-400 hover:text-gray-600")}>
                 {item[1]}
