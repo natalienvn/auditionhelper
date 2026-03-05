@@ -728,16 +728,16 @@ function PrepPlanner(props) {
 
 function PracticeChart(props) {
   var practiceLog = props.practiceLog;
-  var [range, setRange] = useState("days");
+  var [range, setRange] = useState("7days");
 
   var chartData = useMemo(function() {
     var today = new Date();
     today.setHours(0,0,0,0);
+    var dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-    if (range === "days") {
-      // Last 14 days
+    function buildDays(count) {
       var days = [];
-      for (var i = 13; i >= 0; i--) {
+      for (var i = count - 1; i >= 0; i--) {
         var d = new Date(today);
         d.setDate(d.getDate() - i);
         days.push(d.toISOString().slice(0, 10));
@@ -749,10 +749,13 @@ function PracticeChart(props) {
       });
       return days.map(function(d) {
         var dt = new Date(d + "T12:00:00");
-        var dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
         return { label: dayNames[dt.getDay()] + " " + (dt.getMonth()+1) + "/" + dt.getDate(), value: dayMap[d] };
       });
     }
+
+    if (range === "3days") return buildDays(3);
+    if (range === "7days") return buildDays(7);
+    if (range === "14days") return buildDays(14);
 
     if (range === "weeks") {
       // Last 8 weeks
@@ -802,7 +805,7 @@ function PracticeChart(props) {
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-gray-700">📊 Practice Overview</h4>
         <div className="flex gap-1">
-          {[["days","14 Days"],["weeks","8 Weeks"],["months","6 Months"]].map(function(item) {
+          {[["3days","3 Days"],["7days","7 Days"],["14days","14 Days"],["weeks","8 Weeks"],["months","6 Months"]].map(function(item) {
             return (
               <button key={item[0]} onClick={function(){setRange(item[0])}} className={"text-xs px-2 py-1 rounded transition-colors " + (range === item[0] ? "bg-indigo-100 text-indigo-700 font-medium" : "text-gray-400 hover:text-gray-600")}>
                 {item[1]}
@@ -842,7 +845,7 @@ function PracticeChart(props) {
       <div className="text-center text-xs text-gray-400">
         Total: <span className="text-indigo-600 font-medium">{minsToHM(chartData.reduce(function(s,d){return s+d.value},0))}</span>
         {" · "}Avg: <span className="text-indigo-600 font-medium">{minsToHM(Math.round(chartData.reduce(function(s,d){return s+d.value},0) / chartData.length))}</span>
-        /{ range === "days" ? "day" : range === "weeks" ? "wk" : "mo"}
+        /{ range === "weeks" ? "wk" : range === "months" ? "mo" : "day"}
       </div>
     </div>
   );
