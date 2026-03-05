@@ -2155,7 +2155,7 @@ export default function App(props) {
         </div>
       )}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {[["auditions","Auditions"],["planner","Prep Planner"],["milestones","Milestones"],["practice","Practice"],["reflections","Reflections"],["dashboard","Dashboard"],["settings","Settings"]].map(function(item) {
+        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["milestones","Milestones"],["reflections","Reflections"],["dashboard","Dashboard"],["settings","Settings"]].map(function(item) {
           return (
             <TabBtn key={item[0]} label={item[1]} active={tab === item[0]} onClick={function(){setTab(item[0])}} alert={(item[0] === "planner" || item[0] === "milestones") && hasActiveMilestones} />
           );
