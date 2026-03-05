@@ -1198,7 +1198,10 @@ function ConductorChat(props) {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-20 right-5 z-40 w-80 sm:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col" style={{height: 500, maxHeight: "72vh"}}>
+        <div className="fixed inset-0 z-30" onClick={function(){setOpen(false)}} />
+      )}
+      {open && (
+        <div className="fixed bottom-20 right-5 z-40 w-80 sm:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col" style={{height: 500, maxHeight: "72vh"}} onClick={function(e){e.stopPropagation()}}>
           {/* Header */}
           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-3 rounded-t-2xl flex items-center gap-3">
             <div className="bg-white bg-opacity-20 rounded-full p-0.5">
@@ -1506,7 +1509,10 @@ export default function App(props) {
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-4 font-sans">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">🎻 Audition Tracker</h1>
+        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+          <ConductorAvatar mood="happy" size={32} />
+          <span>Audition Tracker</span>
+        </h1>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400 hidden sm:inline">{session.user.email}</span>
           <Btn variant="ghost" onClick={function(){exportCSV(data)}} className="text-xs">Export CSV</Btn>
