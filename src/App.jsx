@@ -1474,6 +1474,179 @@ function ConductorChat(props) {
   );
 }
 
+var REFLECTION_FIELDS = [
+  {key: "wentWell", label: "What went well", icon: "✅", placeholder: "What did you nail? What felt strong?"},
+  {key: "didntGoWell", label: "What didn't go well", icon: "🔻", placeholder: "What fell apart or felt shaky?"},
+  {key: "onStage", label: "How I felt on stage", icon: "🎭", placeholder: "Nerves? Confidence? Focus? Energy level?"},
+  {key: "thatMorning", label: "What I did that morning", icon: "🌅", placeholder: "Warm-up routine, food, travel, timing..."},
+  {key: "sleepNightBefore", label: "How I slept the night before", icon: "🌙", placeholder: "Hours, quality, anything that helped or hurt..."},
+  {key: "dayBefore", label: "What I did the day before", icon: "📅", placeholder: "Practice, rest, travel, social, mental prep..."},
+  {key: "generalNotes", label: "General notes", icon: "📝", placeholder: "Anything else worth remembering for next time..."},
+];
+
+function ReflectionsTab(props) {
+  var auditions = props.auditions;
+  var reflections = props.reflections;
+  var onSave = props.onSave;
+
+  var completed = auditions.filter(function(a) {
+    return ["Auditioned","Advanced","Won","Didn't Advance","Withdrew"].indexOf(a.status) >= 0;
+  });
+  var upcoming = auditions.filter(function(a) {
+    return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0;
+  });
+
+  var [selectedId, setSelectedId] = useState(null);
+  var [editing, setEditing] = useState(null);
+
+  function startReflection(auditionId) {
+    var existing = reflections[auditionId] || {};
+    setSelectedId(auditionId);
+    var draft = {};
+    REFLECTION_FIELDS.forEach(function(f) {
+      draft[f.key] = existing[f.key] || "";
+    });
+    setEditing(draft);
+  }
+
+  function updateField(key, value) {
+    setEditing(function(prev) { return {...prev, [key]: value}; });
+  }
+
+  function save() {
+    if (!selectedId || !editing) return;
+    onSave(selectedId, editing);
+    setSelectedId(null);
+    setEditing(null);
+  }
+
+  function cancel() {
+    setSelectedId(null);
+    setEditing(null);
+  }
+
+  function hasReflection(id) {
+    var r = reflections[id];
+    if (!r) return false;
+    return REFLECTION_FIELDS.some(function(f) { return r[f.key] && r[f.key].trim(); });
+  }
+
+  function filledCount(id) {
+    var r = reflections[id];
+    if (!r) return 0;
+    return REFLECTION_FIELDS.filter(function(f) { return r[f.key] && r[f.key].trim(); }).length;
+  }
+
+  if (selectedId && editing) {
+    var aud = auditions.find(function(a) { return a.id === selectedId; });
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900">{aud ? aud.orchestra : "Audition"}</h3>
+            <p className="text-xs text-gray-400">{aud ? fmtDate(aud.date) : ""}{aud && aud.round ? " · " + aud.round : ""}</p>
+          </div>
+          <Btn variant="ghost" onClick={cancel} className="text-xs">← Back</Btn>
+        </div>
+        <div className="space-y-3">
+          {REFLECTION_FIELDS.map(function(f) {
+            return (
+              <div key={f.key} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                  <span className="text-sm font-medium text-gray-700">{f.icon} {f.label}</span>
+                </div>
+                <textarea
+                  className="w-full px-4 py-3 text-sm text-gray-800 focus:outline-none resize-none leading-relaxed"
+                  rows={3}
+                  value={editing[f.key]}
+                  onChange={function(e){updateField(f.key, e.target.value)}}
+                  placeholder={f.placeholder}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Btn variant="secondary" onClick={cancel}>Cancel</Btn>
+          <Btn onClick={save}>Save Reflection</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="text-center py-2">
+        <p className="text-sm text-gray-500">Reflect on past auditions to learn and improve.</p>
+      </div>
+
+      {completed.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-gray-700">Completed Auditions</h4>
+          {completed.map(function(a) {
+            var has = hasReflection(a.id);
+            var filled = filledCount(a.id);
+            return (
+              <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-medium text-gray-900">{a.orchestra} <span className="text-sm font-normal text-gray-400">({getShortName(a)})</span></h3>
+                    <p className="text-xs text-gray-400 mt-0.5">{fmtDate(a.date)}{a.round ? " · " + a.round : ""}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge status={a.status} />
+                  </div>
+                </div>
+                {has && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                      <div className="bg-indigo-500 h-1.5 rounded-full transition-all" style={{width: Math.round((filled / REFLECTION_FIELDS.length) * 100) + "%"}} />
+                    </div>
+                    <span className="text-xs text-gray-400">{filled}/{REFLECTION_FIELDS.length}</span>
+                  </div>
+                )}
+                {has && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {REFLECTION_FIELDS.filter(function(f) { return reflections[a.id] && reflections[a.id][f.key] && reflections[a.id][f.key].trim(); }).map(function(f) {
+                      return <span key={f.key} className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">{f.icon} {f.label}</span>;
+                    })}
+                  </div>
+                )}
+                <div className="mt-3">
+                  <Btn variant={has ? "secondary" : "primary"} className="text-xs" onClick={function(){startReflection(a.id)}}>
+                    {has ? "Edit Reflection" : "Write Reflection"}
+                  </Btn>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {upcoming.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-gray-400">Upcoming — reflect after the audition</h4>
+          {upcoming.map(function(a) {
+            return (
+              <div key={a.id} className="bg-gray-50 border border-gray-100 rounded-xl p-3 flex items-center justify-between opacity-60">
+                <div>
+                  <span className="text-sm text-gray-500">{a.orchestra}</span>
+                  <span className="text-xs text-gray-400 ml-2">{fmtDate(a.date)}</span>
+                </div>
+                <Badge status={a.status} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {completed.length === 0 && upcoming.length === 0 && (
+        <p className="text-sm text-gray-400 text-center py-8">No auditions yet. Reflections will appear here after you've auditioned.</p>
+      )}
+    </div>
+  );
+}
+
 function exportCSV(data) {
   var rows = [["Orchestra","Short Name","Date","Location","Status","Round","Notes","Excerpts"]];
   data.auditions.forEach(function(a) {
@@ -1646,6 +1819,12 @@ export default function App(props) {
     }
   }
 
+  async function saveReflection(auditionId, reflection) {
+    var s = data.settings || DEFAULT_SETTINGS;
+    var updated = {...s, reflections: {...(s.reflections || {}), [auditionId]: reflection}};
+    await updateSettings(updated);
+  }
+
   async function handleSignOut() {
     await supabase.auth.signOut();
   }
@@ -1698,7 +1877,7 @@ export default function App(props) {
         </div>
       </div>
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["dashboard","Dashboard"],["settings","Settings"]].map(function(item) {
+        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["reflections","Reflections"],["dashboard","Dashboard"],["settings","Settings"]].map(function(item) {
           return (
             <TabBtn key={item[0]} label={item[1]} active={tab === item[0]} onClick={function(){setTab(item[0])}} alert={item[0] === "planner" && hasActiveMilestones} />
           );
@@ -1759,6 +1938,10 @@ export default function App(props) {
 
       {tab === "practice" && (
         <PracticeTab auditions={data.auditions} practiceLog={data.practiceLog} onAdd={addPractice} onDelete={deletePractice} settings={settings} />
+      )}
+
+      {tab === "reflections" && (
+        <ReflectionsTab auditions={data.auditions} reflections={(data.settings || {}).reflections || {}} onSave={saveReflection} />
       )}
 
       {tab === "dashboard" && (
