@@ -1888,6 +1888,75 @@ var INSTRUMENTS = [
   "Percussion","Timpani","Harp","Piano","Other"
 ];
 
+var COMPOSER_AVATARS = [
+  { id: "beethoven", name: "Beethoven", hair: "#5c4033", hairStyle: "wild", skin: "#fcd34d", accent: "#1e1b4b", feature: "scowl" },
+  { id: "mozart", name: "Mozart", hair: "#f5f5dc", hairStyle: "powdered", skin: "#fcd34d", accent: "#ec4899", feature: "cheerful" },
+  { id: "bach", name: "Bach", hair: "#d4d4d4", hairStyle: "baroque", skin: "#fcd34d", accent: "#1e1b4b", feature: "wise" },
+  { id: "brahms", name: "Brahms", hair: "#8b6914", hairStyle: "bushy", skin: "#fcd34d", accent: "#78350f", feature: "beard" },
+  { id: "tchaikovsky", name: "Tchaikovsky", hair: "#6b7280", hairStyle: "neat", skin: "#fcd34d", accent: "#1e40af", feature: "moustache" },
+  { id: "mahler", name: "Mahler", hair: "#1f2937", hairStyle: "parted", skin: "#fcd34d", accent: "#1e1b4b", feature: "glasses" },
+  { id: "debussy", name: "Debussy", hair: "#1f2937", hairStyle: "wavy", skin: "#fcd34d", accent: "#6366f1", feature: "dreamy" },
+  { id: "dvorak", name: "Dvořák", hair: "#78350f", hairStyle: "curly", skin: "#fcd34d", accent: "#15803d", feature: "beard" },
+  { id: "shostakovich", name: "Shostakovich", hair: "#1f2937", hairStyle: "short", skin: "#fcd34d", accent: "#dc2626", feature: "glasses" },
+  { id: "stravinsky", name: "Stravinsky", hair: "#9ca3af", hairStyle: "bald", skin: "#fcd34d", accent: "#f59e0b", feature: "sharp" },
+  { id: "clara", name: "Clara Schumann", hair: "#5c4033", hairStyle: "updo", skin: "#fcd34d", accent: "#7c3aed", feature: "elegant" },
+  { id: "hildegard", name: "Hildegard", hair: "#f5f5dc", hairStyle: "veil", skin: "#fcd34d", accent: "#0ea5e9", feature: "serene" },
+];
+
+function ComposerAvatarSVG(props) {
+  var c = props.composer;
+  var size = props.size || 64;
+  if (!c) return (
+    <svg width={size} height={size} viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="45" fill="#e0e7ff" />
+      <text x="50" y="58" textAnchor="middle" fontSize="30">🎵</text>
+    </svg>
+  );
+
+  var hairPaths = {
+    wild: <><path d="M20 45 Q15 20 35 15 Q45 5 55 10 Q70 5 80 20 Q90 35 80 45" fill={c.hair} /><path d="M22 40 Q18 25 30 18" stroke={c.hair} strokeWidth="4" fill="none" /><path d="M78 40 Q82 25 70 18" stroke={c.hair} strokeWidth="4" fill="none" /></>,
+    powdered: <><ellipse cx="50" cy="30" rx="30" ry="20" fill={c.hair} /><circle cx="25" cy="40" r="8" fill={c.hair} /><circle cx="75" cy="40" r="8" fill={c.hair} /><path d="M30 15 Q50 5 70 15" fill={c.hair} /></>,
+    baroque: <><path d="M18 50 Q15 15 50 12 Q85 15 82 50" fill={c.hair} /><ellipse cx="22" cy="48" rx="8" ry="12" fill={c.hair} /><ellipse cx="78" cy="48" rx="8" ry="12" fill={c.hair} /></>,
+    bushy: <><path d="M20 45 Q18 20 50 15 Q82 20 80 45" fill={c.hair} /><ellipse cx="20" cy="55" rx="6" ry="10" fill={c.hair} /><ellipse cx="80" cy="55" rx="6" ry="10" fill={c.hair} /></>,
+    neat: <><path d="M22 45 Q20 22 50 18 Q80 22 78 45" fill={c.hair} /></>,
+    parted: <><path d="M22 45 Q20 20 48 15 L50 15 Q80 20 78 45" fill={c.hair} /><line x1="48" y1="15" x2="45" y2="30" stroke="#111" strokeWidth="1" opacity="0.3" /></>,
+    wavy: <><path d="M20 48 Q15 20 50 14 Q85 20 80 48" fill={c.hair} /><path d="M25 35 Q30 25 35 35 Q40 25 45 35" stroke={c.hair} strokeWidth="3" fill="none" /></>,
+    curly: <><path d="M20 45 Q18 18 50 13 Q82 18 80 45" fill={c.hair} /><circle cx="28" cy="22" r="5" fill={c.hair} /><circle cx="42" cy="16" r="5" fill={c.hair} /><circle cx="58" cy="16" r="5" fill={c.hair} /><circle cx="72" cy="22" r="5" fill={c.hair} /></>,
+    short: <><path d="M25 42 Q23 25 50 20 Q77 25 75 42" fill={c.hair} /></>,
+    bald: <><path d="M30 40 Q28 32 50 28 Q72 32 70 40" fill={c.hair} /></>,
+    updo: <><path d="M25 45 Q22 20 50 15 Q78 20 75 45" fill={c.hair} /><ellipse cx="50" cy="12" rx="15" ry="10" fill={c.hair} /><circle cx="55" cy="8" r="3" fill={c.accent} /></>,
+    veil: <><path d="M18 55 Q15 15 50 10 Q85 15 82 55" fill="#e0e7ff" /><path d="M25 45 Q22 22 50 17 Q78 22 75 45" fill={c.hair} /></>,
+  };
+
+  var features = {
+    scowl: <><text x="38" y="56" textAnchor="middle" fontSize="8" fill={c.accent}>▼</text><text x="62" y="56" textAnchor="middle" fontSize="8" fill={c.accent}>▼</text><path d="M38 66 Q50 62 62 66" stroke={c.accent} strokeWidth="2" fill="none" /></>,
+    cheerful: <><circle cx="38" cy="53" r="3" fill={c.accent} /><circle cx="62" cy="53" r="3" fill={c.accent} /><path d="M38 66 Q50 74 62 66" stroke={c.accent} strokeWidth="2" fill="none" /><circle cx="36" cy="60" r="4" fill="#fca5a5" opacity="0.5" /><circle cx="64" cy="60" r="4" fill="#fca5a5" opacity="0.5" /></>,
+    wise: <><circle cx="38" cy="53" r="3" fill={c.accent} /><circle cx="62" cy="53" r="3" fill={c.accent} /><path d="M40 67 Q50 70 60 67" stroke={c.accent} strokeWidth="1.5" fill="none" /></>,
+    beard: <><circle cx="38" cy="53" r="3" fill={c.accent} /><circle cx="62" cy="53" r="3" fill={c.accent} /><path d="M35 65 Q50 68 65 65" stroke={c.accent} strokeWidth="1.5" fill="none" /><path d="M32 68 Q50 90 68 68" fill={c.hair} opacity="0.7" /></>,
+    moustache: <><circle cx="38" cy="53" r="3" fill={c.accent} /><circle cx="62" cy="53" r="3" fill={c.accent} /><path d="M38 64 Q50 60 62 64" stroke={c.hair} strokeWidth="3" fill="none" /><path d="M42 68 Q50 72 58 68" stroke={c.accent} strokeWidth="1.5" fill="none" /></>,
+    glasses: <><circle cx="38" cy="53" r="7" stroke={c.accent} strokeWidth="2" fill="none" /><circle cx="62" cy="53" r="7" stroke={c.accent} strokeWidth="2" fill="none" /><line x1="45" y1="53" x2="55" y2="53" stroke={c.accent} strokeWidth="2" /><circle cx="38" cy="53" r="2.5" fill={c.accent} /><circle cx="62" cy="53" r="2.5" fill={c.accent} /><path d="M40 68 Q50 72 60 68" stroke={c.accent} strokeWidth="1.5" fill="none" /></>,
+    dreamy: <><ellipse cx="38" cy="53" rx="4" ry="3" fill={c.accent} /><ellipse cx="62" cy="53" rx="4" ry="3" fill={c.accent} /><path d="M40 67 Q50 72 60 67" stroke={c.accent} strokeWidth="1.5" fill="none" /><circle cx="34" cy="59" r="4" fill="#c4b5fd" opacity="0.4" /><circle cx="66" cy="59" r="4" fill="#c4b5fd" opacity="0.4" /></>,
+    sharp: <><line x1="33" y1="50" x2="43" y2="50" stroke={c.accent} strokeWidth="2" /><line x1="57" y1="50" x2="67" y2="50" stroke={c.accent} strokeWidth="2" /><circle cx="38" cy="55" r="2.5" fill={c.accent} /><circle cx="62" cy="55" r="2.5" fill={c.accent} /><path d="M42 67 Q50 70 58 67" stroke={c.accent} strokeWidth="1.5" fill="none" /></>,
+    elegant: <><ellipse cx="38" cy="53" rx="3" ry="3.5" fill={c.accent} /><ellipse cx="62" cy="53" rx="3" ry="3.5" fill={c.accent} /><path d="M40 66 Q50 72 60 66" stroke={c.accent} strokeWidth="1.5" fill="none" /><circle cx="35" cy="59" r="4" fill="#fca5a5" opacity="0.4" /><circle cx="65" cy="59" r="4" fill="#fca5a5" opacity="0.4" /></>,
+    serene: <><path d="M35 53 Q38 51 41 53" stroke={c.accent} strokeWidth="2" fill="none" /><path d="M59 53 Q62 51 65 53" stroke={c.accent} strokeWidth="2" fill="none" /><path d="M42 67 Q50 71 58 67" stroke={c.accent} strokeWidth="1.5" fill="none" /></>,
+  };
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="48" fill="#f0f0ff" />
+      {/* Hair behind */}
+      {hairPaths[c.hairStyle]}
+      {/* Face */}
+      <ellipse cx="50" cy="55" rx="25" ry="27" fill={c.skin} />
+      {/* Cheeks default */}
+      {/* Features (eyes, mouth, extras) */}
+      {features[c.feature]}
+      {/* Collar */}
+      <path d="M35 80 Q50 85 65 80 L70 95 Q50 90 30 95 Z" fill={c.accent} opacity="0.3" />
+    </svg>
+  );
+}
+
 function ProfileTab(props) {
   var profile = props.profile;
   var onSave = props.onSave;
@@ -1901,8 +1970,10 @@ function ProfileTab(props) {
     teacher: (profile && profile.teacher) || "",
     currentEnsemble: (profile && profile.currentEnsemble) || "",
     yearsPlaying: (profile && profile.yearsPlaying) || "",
+    avatarId: (profile && profile.avatarId) || "",
   });
   var [saved, setSaved] = useState(false);
+  var [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   function update(key, val) {
     setF(function(prev) { return {...prev, [key]: val}; });
@@ -1915,18 +1986,53 @@ function ProfileTab(props) {
     setTimeout(function() { setSaved(false); }, 2000);
   }
 
+  var selectedComposer = COMPOSER_AVATARS.find(function(c) { return c.id === f.avatarId; }) || null;
+
   return (
     <div className="space-y-5">
       <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-2xl shrink-0">
-            {f.firstName ? f.firstName[0].toUpperCase() : "🎵"}
-          </div>
+          <button onClick={function(){setShowAvatarPicker(!showAvatarPicker)}} className="shrink-0 group relative" title="Change avatar">
+            <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-indigo-200 group-hover:border-indigo-400 transition-colors">
+              {selectedComposer ? (
+                <ComposerAvatarSVG composer={selectedComposer} size={64} />
+              ) : (
+                <div className="w-full h-full bg-indigo-100 flex items-center justify-center text-2xl">
+                  {f.firstName ? f.firstName[0].toUpperCase() : "🎵"}
+                </div>
+              )}
+            </div>
+            <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs border-2 border-white">✎</div>
+          </button>
           <div>
             <h3 className="font-semibold text-gray-800">Your Profile</h3>
-            <p className="text-xs text-gray-400">This personalizes your experience.</p>
+            <p className="text-xs text-gray-400">{selectedComposer ? "Avatar: " + selectedComposer.name : "Click the icon to choose an avatar!"}</p>
           </div>
         </div>
+
+        {showAvatarPicker && (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-gray-700">Choose Your Composer</h4>
+              <button onClick={function(){setShowAvatarPicker(false)}} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
+            </div>
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
+              {COMPOSER_AVATARS.map(function(c) {
+                var isSelected = f.avatarId === c.id;
+                return (
+                  <button key={c.id} onClick={function(){update("avatarId", c.id); setShowAvatarPicker(false)}} className={"flex flex-col items-center gap-1 p-2 rounded-xl transition-all " + (isSelected ? "bg-indigo-100 border-2 border-indigo-400 scale-105" : "hover:bg-gray-100 border-2 border-transparent")}>
+                    <ComposerAvatarSVG composer={c} size={48} />
+                    <span className="text-xs text-gray-600 leading-tight text-center">{c.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {f.avatarId && (
+              <button onClick={function(){update("avatarId", "")}} className="text-xs text-gray-400 hover:text-red-500">Remove avatar</button>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Inp label="First Name" value={f.firstName} onChange={function(e){update("firstName", e.target.value)}} placeholder="Natalie" />
           <Inp label="Last Name" value={f.lastName} onChange={function(e){update("lastName", e.target.value)}} placeholder="Smith" />
@@ -2259,7 +2365,12 @@ export default function App(props) {
     <div className="max-w-3xl mx-auto p-4 space-y-4 font-sans">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <ConductorAvatar mood="happy" size={32} />
+          {(function() {
+            var avatarId = settings.profile && settings.profile.avatarId;
+            var comp = avatarId && COMPOSER_AVATARS.find(function(c) { return c.id === avatarId; });
+            if (comp) return <ComposerAvatarSVG composer={comp} size={32} />;
+            return <ConductorAvatar mood="happy" size={32} />;
+          })()}
           <span>{(function() {
             var profile = settings.profile;
             var name = profile && profile.firstName;
