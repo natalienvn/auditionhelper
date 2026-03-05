@@ -831,6 +831,33 @@ function PrepPlanner(props) {
     var practiced = practiceTotals[ex.key] || 0;
     var sessions = practiceByExcerpt[ex.key] || [];
     var [showHistory, setShowHistory] = useState(false);
+
+    // Calculate days since last practice
+    var daysSincePractice = null;
+    if (sessions.length > 0) {
+      var dates = sessions.map(function(s) { return s.date; }).sort().reverse();
+      daysSincePractice = daysUntil(dates[0]) * -1; // negative because daysUntil counts forward
+      // recalc properly
+      var lastDate = new Date(dates[0] + "T12:00:00");
+      var now = new Date();
+      now.setHours(0,0,0,0);
+      lastDate.setHours(0,0,0,0);
+      daysSincePractice = Math.floor((now - lastDate) / 864e5);
+    }
+    var needsNudge = (sessions.length === 0 && practiced === 0) || (daysSincePractice !== null && daysSincePractice >= 3);
+
+    var birdMessages = [
+      "Psst... you haven't practiced this in " + (daysSincePractice || "a while") + " days. Time to look at it?",
+      "Hey! This one misses you. It's been " + (daysSincePractice || "a while") + " days!",
+      "Chirp! " + (daysSincePractice || "A few") + " days without this one. Give it some love?",
+    ];
+    var noPracticeMessages = [
+      "Psst... you haven't practiced this one yet!",
+      "This excerpt is waiting for its first practice session!",
+      "Hey! Don't forget about this one — give it a try?",
+    ];
+    var nudgeMsg = sessions.length === 0 ? noPracticeMessages[Math.floor(Math.random() * noPracticeMessages.length)] : birdMessages[Math.floor(Math.random() * birdMessages.length)];
+
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -858,6 +885,15 @@ function PrepPlanner(props) {
             )}
           </div>
         </div>
+        {needsNudge && (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <span className="text-lg shrink-0">🐦</span>
+            <div className="relative">
+              <div className="absolute -left-1 top-1.5 w-2 h-2 bg-amber-50 border-l border-b border-amber-200 rotate-45 -ml-1.5" />
+              <p className="text-xs text-amber-800 italic relative z-10">{nudgeMsg}</p>
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-1 flex-wrap">
           <span className="text-xs text-gray-500 mr-1">Readiness:</span>
           {READINESS.map(function(r) {
@@ -931,44 +967,63 @@ function PrepPlanner(props) {
     );
   }
 
+  var [showRanking, setShowRanking] = useState(false);
+  var [showROI, setShowROI] = useState(false);
+
   if (!active.length) return (<p className="text-sm text-gray-400 text-center py-8">No active auditions to plan for.</p>);
   if (!scored.length) return (<p className="text-sm text-gray-400 text-center py-8">Add rep lists to your auditions to see the prep plan.</p>);
 
   return (
     <div className="space-y-5">
       <RunThroughPanel auditions={auditions} settings={settings} onSwitchTab={onSwitchTab} />
-      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-        <h4 className="text-sm font-semibold text-gray-700 mb-1">Full Priority Ranking</h4>
-        <p className="text-xs text-gray-500 mb-3">Scored by deadline + overlap + readiness.</p>
-        <div className="space-y-1">
-          {scored.map(function(ex, i) {
-            return (
-              <div key={ex.key} className="flex items-center gap-2 text-sm py-1">
-                <span className={"w-6 text-right font-bold " + (i < 3 ? "text-red-600" : i < 8 ? "text-amber-600" : "text-gray-400")}>{i + 1}</span>
-                <span className="flex-1 text-gray-800">{ex.label}</span>
-                <span className="text-xs text-gray-400">{ex.closestDays <= 0 ? "past" : ex.closestDays + "d"}</span>
-                {ex.numAuditions > 1 && (<span className="text-xs text-emerald-600">x{ex.numAuditions}</span>)}
-                <RBadge level={ex.readinessLevel} />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {highROI.length > 0 && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-1">
-          <h4 className="text-sm font-semibold text-emerald-800">Highest ROI — on multiple lists</h4>
-          <p className="text-xs text-emerald-600 mb-2">Nail these to cover ground across auditions.</p>
-          {highROI.map(function(ex) {
-            return (
-              <div key={ex.key} className="flex items-center justify-between text-sm">
-                <span className="text-emerald-800">{ex.label}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-emerald-600 font-medium">x{ex.numAuditions}</span>
+      <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+        <button onClick={function(){setShowRanking(!showRanking)}} className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-100 transition-colors">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 text-left">Full Priority Ranking</h4>
+            <p className="text-xs text-gray-500 text-left">Scored by deadline + overlap + readiness</p>
+          </div>
+          <span className={"text-gray-400 transition-transform " + (showRanking ? "rotate-180" : "")}>▼</span>
+        </button>
+        {showRanking && (
+          <div className="px-4 pb-3 space-y-1">
+            {scored.map(function(ex, i) {
+              return (
+                <div key={ex.key} className="flex items-center gap-2 text-sm py-1">
+                  <span className={"w-6 text-right font-bold " + (i < 3 ? "text-red-600" : i < 8 ? "text-amber-600" : "text-gray-400")}>{i + 1}</span>
+                  <span className="flex-1 text-gray-800">{ex.label}</span>
+                  <span className="text-xs text-gray-400">{ex.closestDays <= 0 ? "past" : ex.closestDays + "d"}</span>
+                  {ex.numAuditions > 1 && (<span className="text-xs text-emerald-600">x{ex.numAuditions}</span>)}
                   <RBadge level={ex.readinessLevel} />
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {highROI.length > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl overflow-hidden">
+          <button onClick={function(){setShowROI(!showROI)}} className="w-full px-4 py-3 flex items-center justify-between hover:bg-emerald-100 transition-colors">
+            <div>
+              <h4 className="text-sm font-semibold text-emerald-800 text-left">Highest ROI — on multiple lists</h4>
+              <p className="text-xs text-emerald-600 text-left">Nail these to cover ground across auditions</p>
+            </div>
+            <span className={"text-emerald-400 transition-transform " + (showROI ? "rotate-180" : "")}>▼</span>
+          </button>
+          {showROI && (
+            <div className="px-4 pb-3 space-y-1">
+              {highROI.map(function(ex) {
+                return (
+                  <div key={ex.key} className="flex items-center justify-between text-sm">
+                    <span className="text-emerald-800">{ex.label}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-emerald-600 font-medium">x{ex.numAuditions}</span>
+                      <RBadge level={ex.readinessLevel} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
       <Section title="🔴 This Week" sub="Auditions within 7 days" color="text-red-700" items={thisWeek} />
