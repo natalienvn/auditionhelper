@@ -469,6 +469,7 @@ function AuditionForm(props) {
 function RunThroughPanel(props) {
   var auditions = props.auditions;
   var settings = props.settings;
+  var onSwitchTab = props.onSwitchTab;
   var active = auditions.filter(function(a) {
     return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0 && a.date;
   });
@@ -487,27 +488,204 @@ function RunThroughPanel(props) {
   if (!upcoming.length) return null;
   upcoming.sort(function(a,b) { return a.daysLeft - b.daysLeft; });
 
-  var typeColors = {
-    informal: "bg-blue-50 border-blue-200 text-blue-800",
-    runthrough: "bg-purple-50 border-purple-200 text-purple-800",
-    mock: "bg-amber-50 border-amber-200 text-amber-800",
-    dress: "bg-red-50 border-red-200 text-red-800"
-  };
-
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
-      <h4 className="text-sm font-semibold text-gray-800">🎯 Run-Through Milestones</h4>
-      <p className="text-xs text-gray-500">Based on your configured timeline.</p>
-      {upcoming.map(function(m, i) {
-        return (
-          <div key={i} className={"border rounded-lg px-3 py-2 text-sm " + (typeColors[m.type] || "bg-gray-50 border-gray-200 text-gray-700")}>
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{m.label}</span>
-              <span className="text-xs opacity-75">{m.orchestra} · {m.daysLeft}d left</span>
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-gray-800">🎯 Run-Through Milestones</h4>
+        {onSwitchTab && (
+          <button onClick={function(){onSwitchTab("milestones")}} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">View all →</button>
+        )}
+      </div>
+      <p className="text-xs text-gray-500">{upcoming.length} milestone{upcoming.length !== 1 ? "s" : ""} active right now.</p>
+    </div>
+  );
+}
+
+function MilestonesTab(props) {
+  var auditions = props.auditions;
+  var settings = props.settings;
+  var milestoneNotes = props.milestoneNotes;
+  var milestoneComplete = props.milestoneComplete;
+  var onSaveNote = props.onSaveNote;
+  var onToggleComplete = props.onToggleComplete;
+
+  var active = auditions.filter(function(a) {
+    return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0 && a.date;
+  });
+
+  var milestones = settings.runThroughMilestones || DEFAULT_SETTINGS.runThroughMilestones;
+
+  var allMilestones = useMemo(function() {
+    var result = [];
+    active.forEach(function(a) {
+      var days = daysUntil(a.date);
+      milestones.forEach(function(m) {
+        var mKey = a.id + "::" + m.label;
+        var targetDate = new Date(a.date + "T12:00:00");
+        targetDate.setDate(targetDate.getDate() - m.daysOut);
+        result.push({
+          key: mKey,
+          auditionId: a.id,
+          orchestra: a.orchestra,
+          shortName: getShortName(a),
+          auditionDate: a.date,
+          daysToAudition: days,
+          label: m.label,
+          type: m.type,
+          daysOut: m.daysOut,
+          targetDate: targetDate.toISOString().slice(0, 10),
+          daysUntilMilestone: daysUntil(targetDate.toISOString().slice(0, 10)),
+          completed: !!(milestoneComplete && milestoneComplete[mKey]),
+          note: (milestoneNotes && milestoneNotes[mKey]) || "",
+        });
+      });
+    });
+    result.sort(function(a, b) { return a.daysUntilMilestone - b.daysUntilMilestone; });
+    return result;
+  }, [active, milestones, milestoneNotes, milestoneComplete]);
+
+  var overdue = allMilestones.filter(function(m) { return m.daysUntilMilestone < 0 && !m.completed; });
+  var thisWeek = allMilestones.filter(function(m) { return m.daysUntilMilestone >= 0 && m.daysUntilMilestone <= 7 && !m.completed; });
+  var later = allMilestones.filter(function(m) { return m.daysUntilMilestone > 7 && !m.completed; });
+  var done = allMilestones.filter(function(m) { return m.completed; });
+
+  var typeColors = {
+    informal: "border-l-blue-400",
+    runthrough: "border-l-purple-400",
+    mock: "border-l-amber-400",
+    dress: "border-l-red-400"
+  };
+  var typeIcons = {
+    informal: "🎵",
+    runthrough: "🎶",
+    mock: "🎭",
+    dress: "👔"
+  };
+
+  function MilestoneCard(cardProps) {
+    var m = cardProps.m;
+    var [noteOpen, setNoteOpen] = useState(false);
+    var [draft, setDraft] = useState(m.note);
+    var [editing, setEditing] = useState(false);
+
+    function saveNote() {
+      onSaveNote(m.key, draft);
+      setEditing(false);
+    }
+
+    return (
+      <div className={"bg-white border border-gray-200 border-l-4 rounded-lg p-3 space-y-2 " + (typeColors[m.type] || "border-l-gray-400") + (m.completed ? " opacity-60" : "")}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span>{typeIcons[m.type] || "🎯"}</span>
+              <span className={"text-sm font-medium " + (m.completed ? "line-through text-gray-400" : "text-gray-900")}>{m.label}</span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs text-indigo-600 font-medium">{m.shortName}</span>
+              <span className="text-xs text-gray-400">·</span>
+              <span className="text-xs text-gray-400">Audition {fmtDate(m.auditionDate)}</span>
+              <span className="text-xs text-gray-400">·</span>
+              <span className={"text-xs font-medium " + (m.daysUntilMilestone < 0 ? "text-red-500" : m.daysUntilMilestone <= 3 ? "text-amber-600" : "text-gray-500")}>
+                {m.daysUntilMilestone < 0 ? Math.abs(m.daysUntilMilestone) + "d overdue" : m.daysUntilMilestone === 0 ? "Today" : "in " + m.daysUntilMilestone + "d"}
+              </span>
             </div>
           </div>
-        );
-      })}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={function(){onToggleComplete(m.key, !m.completed)}}
+              className={"w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors " + (m.completed ? "bg-green-500 border-green-500 text-white" : "border-gray-300 hover:border-green-400")}
+              title={m.completed ? "Mark incomplete" : "Mark complete"}
+            >
+              {m.completed && <span style={{fontSize: 12}}>✓</span>}
+            </button>
+          </div>
+        </div>
+        {/* Notes section */}
+        <div className="flex items-center gap-2">
+          {m.note && !editing ? (
+            <button onClick={function(){setNoteOpen(!noteOpen)}} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium flex items-center gap-1">
+              📝 {noteOpen ? "hide notes" : "view notes"}
+            </button>
+          ) : null}
+          {!m.note && !editing ? (
+            <button onClick={function(){setEditing(true); setDraft("")}} className="text-xs text-gray-400 hover:text-indigo-500 flex items-center gap-1">
+              📝 add notes
+            </button>
+          ) : null}
+          {m.note && !editing ? (
+            <button onClick={function(){setEditing(true); setDraft(m.note)}} className="text-xs text-gray-400 hover:text-indigo-500">
+              edit
+            </button>
+          ) : null}
+        </div>
+        {noteOpen && m.note && !editing && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">
+            {m.note}
+          </div>
+        )}
+        {editing && (
+          <div className="space-y-2">
+            <textarea
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none leading-relaxed"
+              rows={3}
+              value={draft}
+              onChange={function(e){setDraft(e.target.value)}}
+              placeholder="How did it go? What did you learn? What to adjust for the real thing?"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={function(){setEditing(false)}} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">Cancel</button>
+              <button onClick={saveNote} className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg hover:bg-indigo-700">Save</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function MilestoneSection(secProps) {
+    if (!secProps.items.length) return null;
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <h4 className={"text-sm font-semibold " + secProps.color}>{secProps.title}</h4>
+          <span className="text-xs text-gray-400">{secProps.items.length}</span>
+        </div>
+        {secProps.items.map(function(m) { return <MilestoneCard key={m.key} m={m} />; })}
+      </div>
+    );
+  }
+
+  if (!active.length) return (<p className="text-sm text-gray-400 text-center py-8">No active auditions with dates set.</p>);
+  if (allMilestones.length === 0) return (<p className="text-sm text-gray-400 text-center py-8">No milestones configured. Add them in Settings.</p>);
+
+  var totalCount = allMilestones.length;
+  var doneCount = done.length;
+
+  return (
+    <div className="space-y-5">
+      {/* Progress overview */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-sm font-semibold text-gray-800">🎯 Milestone Progress</h4>
+          <span className="text-xs text-gray-400">{doneCount}/{totalCount} complete</span>
+        </div>
+        <div className="w-full bg-gray-100 rounded-full h-2">
+          <div className="bg-green-500 h-2 rounded-full transition-all" style={{width: (totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0) + "%"}} />
+        </div>
+      </div>
+
+      <MilestoneSection title="🔴 Overdue" color="text-red-600" items={overdue} />
+      <MilestoneSection title="🟡 This Week" color="text-amber-600" items={thisWeek} />
+      <MilestoneSection title="🟢 Coming Up" color="text-gray-600" items={later} />
+
+      {done.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-green-600">✅ Completed ({done.length})</h4>
+          {done.map(function(m) { return <MilestoneCard key={m.key} m={m} />; })}
+        </div>
+      )}
     </div>
   );
 }
@@ -587,6 +765,7 @@ function PrepPlanner(props) {
   var onSetReadiness = props.onSetReadiness;
   var practiceLog = props.practiceLog;
   var settings = props.settings;
+  var onSwitchTab = props.onSwitchTab;
 
   var active = auditions.filter(function(a) {
     return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0;
@@ -757,7 +936,7 @@ function PrepPlanner(props) {
 
   return (
     <div className="space-y-5">
-      <RunThroughPanel auditions={auditions} settings={settings} />
+      <RunThroughPanel auditions={auditions} settings={settings} onSwitchTab={onSwitchTab} />
       {highROI.length > 0 && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-1">
           <h4 className="text-sm font-semibold text-emerald-800">Highest ROI — on multiple lists</h4>
@@ -1856,6 +2035,18 @@ export default function App(props) {
     await updateSettings(updated);
   }
 
+  async function saveMilestoneNote(key, noteText) {
+    var s = data.settings || DEFAULT_SETTINGS;
+    var updated = {...s, milestoneNotes: {...(s.milestoneNotes || {}), [key]: noteText}};
+    await updateSettings(updated);
+  }
+
+  async function toggleMilestoneComplete(key, completed) {
+    var s = data.settings || DEFAULT_SETTINGS;
+    var updated = {...s, milestoneComplete: {...(s.milestoneComplete || {}), [key]: completed}};
+    await updateSettings(updated);
+  }
+
   async function handleSignOut() {
     await supabase.auth.signOut();
   }
@@ -1886,6 +2077,35 @@ export default function App(props) {
     });
   }, [data.auditions, settings]);
 
+  var [remindersDismissed, setRemindersDismissed] = useState(false);
+
+  var urgentMilestones = useMemo(function() {
+    if (loading) return [];
+    var active = data.auditions.filter(function(a){return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0 && a.date});
+    var miles = settings.runThroughMilestones || DEFAULT_SETTINGS.runThroughMilestones;
+    var mc = (data.settings || {}).milestoneComplete || {};
+    var urgent = [];
+    active.forEach(function(a) {
+      miles.forEach(function(m) {
+        var mKey = a.id + "::" + m.label;
+        if (mc[mKey]) return;
+        var targetDate = new Date(a.date + "T12:00:00");
+        targetDate.setDate(targetDate.getDate() - m.daysOut);
+        var daysLeft = daysUntil(targetDate.toISOString().slice(0, 10));
+        if (daysLeft >= -1 && daysLeft <= 3) {
+          urgent.push({
+            label: m.label,
+            orchestra: getShortName(a),
+            daysLeft: daysLeft,
+            type: m.type,
+          });
+        }
+      });
+    });
+    urgent.sort(function(a, b) { return a.daysLeft - b.daysLeft; });
+    return urgent;
+  }, [data.auditions, settings, data.settings, loading]);
+
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto p-4 text-center py-20">
@@ -1908,10 +2128,36 @@ export default function App(props) {
         </div>
       </div>
       <p className="text-xs text-gray-400 italic -mt-2">{dailyQuote}</p>
+      {urgentMilestones.length > 0 && !remindersDismissed && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ConductorAvatar mood="happy" size={24} />
+              <span className="text-sm font-semibold text-amber-800">Milestone Reminder!</span>
+            </div>
+            <button onClick={function(){setRemindersDismissed(true)}} className="text-amber-400 hover:text-amber-600 text-sm">✕</button>
+          </div>
+          {urgentMilestones.map(function(m, i) {
+            return (
+              <div key={i} className="flex items-center gap-2 text-sm text-amber-800">
+                <span className={"font-bold " + (m.daysLeft <= 0 ? "text-red-600" : m.daysLeft === 1 ? "text-red-500" : "text-amber-600")}>
+                  {m.daysLeft < 0 ? "Overdue!" : m.daysLeft === 0 ? "Today!" : m.daysLeft === 1 ? "Tomorrow!" : m.daysLeft + " days left"}
+                </span>
+                <span>—</span>
+                <span>{m.label}</span>
+                <span className="text-amber-500">({m.orchestra})</span>
+              </div>
+            );
+          })}
+          <button onClick={function(){setTab("milestones"); setRemindersDismissed(true)}} className="text-xs text-amber-700 hover:text-amber-900 font-medium">
+            Go to Milestones →
+          </button>
+        </div>
+      )}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["reflections","Reflections"],["dashboard","Dashboard"],["settings","Settings"]].map(function(item) {
+        {[["auditions","Auditions"],["planner","Prep Planner"],["milestones","Milestones"],["practice","Practice"],["reflections","Reflections"],["dashboard","Dashboard"],["settings","Settings"]].map(function(item) {
           return (
-            <TabBtn key={item[0]} label={item[1]} active={tab === item[0]} onClick={function(){setTab(item[0])}} alert={item[0] === "planner" && hasActiveMilestones} />
+            <TabBtn key={item[0]} label={item[1]} active={tab === item[0]} onClick={function(){setTab(item[0])}} alert={(item[0] === "planner" || item[0] === "milestones") && hasActiveMilestones} />
           );
         })}
       </div>
@@ -1965,7 +2211,11 @@ export default function App(props) {
       )}
 
       {tab === "planner" && (
-        <PrepPlanner auditions={data.auditions} readiness={data.readiness || {}} onSetReadiness={setReadinessLevel} practiceLog={data.practiceLog} settings={settings} />
+        <PrepPlanner auditions={data.auditions} readiness={data.readiness || {}} onSetReadiness={setReadinessLevel} practiceLog={data.practiceLog} settings={settings} onSwitchTab={setTab} />
+      )}
+
+      {tab === "milestones" && (
+        <MilestonesTab auditions={data.auditions} settings={settings} milestoneNotes={(data.settings || {}).milestoneNotes || {}} milestoneComplete={(data.settings || {}).milestoneComplete || {}} onSaveNote={saveMilestoneNote} onToggleComplete={toggleMilestoneComplete} />
       )}
 
       {tab === "practice" && (
@@ -2013,7 +2263,7 @@ export default function App(props) {
         <SettingsPanel settings={settings} onUpdate={updateSettings} />
       )}
 
-      {(tab === "practice" || tab === "planner") && (
+      {(tab === "practice" || tab === "planner" || tab === "milestones") && (
         <ConductorChat auditions={data.auditions} practiceLog={data.practiceLog} readiness={data.readiness || {}} messages={conductorMessages} onSetMessages={setConductorMessages} />
       )}
     </div>
