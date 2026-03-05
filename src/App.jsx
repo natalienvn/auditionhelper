@@ -726,6 +726,128 @@ function PrepPlanner(props) {
   );
 }
 
+function PracticeChart(props) {
+  var practiceLog = props.practiceLog;
+  var [range, setRange] = useState("days");
+
+  var chartData = useMemo(function() {
+    var today = new Date();
+    today.setHours(0,0,0,0);
+
+    if (range === "days") {
+      // Last 14 days
+      var days = [];
+      for (var i = 13; i >= 0; i--) {
+        var d = new Date(today);
+        d.setDate(d.getDate() - i);
+        days.push(d.toISOString().slice(0, 10));
+      }
+      var dayMap = {};
+      days.forEach(function(k) { dayMap[k] = 0; });
+      practiceLog.forEach(function(p) {
+        if (dayMap[p.date] !== undefined) dayMap[p.date] += p.minutes;
+      });
+      return days.map(function(d) {
+        var dt = new Date(d + "T12:00:00");
+        var dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+        return { label: dayNames[dt.getDay()] + " " + (dt.getMonth()+1) + "/" + dt.getDate(), value: dayMap[d] };
+      });
+    }
+
+    if (range === "weeks") {
+      // Last 8 weeks
+      var weeks = [];
+      for (var w = 7; w >= 0; w--) {
+        var weekStart = new Date(today);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay() - (w * 7));
+        var weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        weeks.push({ start: weekStart, end: weekEnd, startStr: weekStart.toISOString().slice(0,10), endStr: weekEnd.toISOString().slice(0,10), minutes: 0 });
+      }
+      practiceLog.forEach(function(p) {
+        if (!p.date) return;
+        weeks.forEach(function(wk) {
+          if (p.date >= wk.startStr && p.date <= wk.endStr) wk.minutes += p.minutes;
+        });
+      });
+      return weeks.map(function(wk) {
+        return { label: (wk.start.getMonth()+1) + "/" + wk.start.getDate(), value: wk.minutes };
+      });
+    }
+
+    // months — last 6 months
+    var months = [];
+    for (var m = 5; m >= 0; m--) {
+      var md = new Date(today.getFullYear(), today.getMonth() - m, 1);
+      var key = md.toISOString().slice(0, 7);
+      var monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      months.push({ key: key, label: monthNames[md.getMonth()], minutes: 0 });
+    }
+    practiceLog.forEach(function(p) {
+      if (!p.date) return;
+      var pk = p.date.slice(0, 7);
+      months.forEach(function(mo) {
+        if (mo.key === pk) mo.minutes += p.minutes;
+      });
+    });
+    return months.map(function(mo) {
+      return { label: mo.label, value: mo.minutes };
+    });
+  }, [practiceLog, range]);
+
+  var maxVal = Math.max.apply(null, chartData.map(function(d) { return d.value; }).concat([1]));
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium text-gray-700">📊 Practice Overview</h4>
+        <div className="flex gap-1">
+          {[["days","14 Days"],["weeks","8 Weeks"],["months","6 Months"]].map(function(item) {
+            return (
+              <button key={item[0]} onClick={function(){setRange(item[0])}} className={"text-xs px-2 py-1 rounded transition-colors " + (range === item[0] ? "bg-indigo-100 text-indigo-700 font-medium" : "text-gray-400 hover:text-gray-600")}>
+                {item[1]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex items-end gap-1" style={{height: 120}}>
+        {chartData.map(function(d, i) {
+          var pct = maxVal > 0 ? (d.value / maxVal) * 100 : 0;
+          var barH = Math.max(pct, d.value > 0 ? 4 : 0);
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+              {d.value > 0 && (
+                <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                  {minsToHM(d.value)}
+                </div>
+              )}
+              <div
+                className={"w-full rounded-t transition-all duration-300 " + (d.value > 0 ? "bg-indigo-500 hover:bg-indigo-600" : "bg-gray-100")}
+                style={{height: barH + "%", minHeight: d.value > 0 ? 3 : 1}}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-1">
+        {chartData.map(function(d, i) {
+          return (
+            <div key={i} className="flex-1 text-center">
+              <span className="text-gray-400 block leading-tight" style={{fontSize: 9}}>{d.label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-center text-xs text-gray-400">
+        Total: <span className="text-indigo-600 font-medium">{minsToHM(chartData.reduce(function(s,d){return s+d.value},0))}</span>
+        {" · "}Avg: <span className="text-indigo-600 font-medium">{minsToHM(Math.round(chartData.reduce(function(s,d){return s+d.value},0) / chartData.length))}</span>
+        /{ range === "days" ? "day" : range === "weeks" ? "wk" : "mo"}
+      </div>
+    </div>
+  );
+}
+
 function PracticeTab(props) {
   var auditions = props.auditions;
   var practiceLog = props.practiceLog;
@@ -764,6 +886,7 @@ function PracticeTab(props) {
         <TimerWidget defaultMins={settings.sessionTimerMins} mode="session" onComplete={function(){setBirdMsg("Time to stop! Great work today. 🎶")}} />
       </div>
       {birdMsg && (<BirdPopup message={birdMsg} onClose={function(){setBirdMsg(null)}} />)}
+      <PracticeChart practiceLog={practiceLog} />
       <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
         <h4 className="text-sm font-medium text-gray-700">Log Practice</h4>
         {allEx.length === 0 ? (
