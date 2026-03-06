@@ -100,6 +100,14 @@ export async function deletePracticeDB(id) {
   if (error) throw error;
 }
 
+export async function updatePracticeDB(id, fields) {
+  var updateObj = {};
+  if (fields.minutes !== undefined) updateObj.minutes = fields.minutes;
+  if (fields.note !== undefined) updateObj.note = fields.note;
+  var { error } = await supabase.from("practice_log").update(updateObj).eq("id", id);
+  if (error) throw error;
+}
+
 // ── Readiness ──────────────────────────────────────────
 
 export async function fetchReadiness() {

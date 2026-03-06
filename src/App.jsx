@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import {
   fetchAuditions, upsertAudition, deleteAuditionDB,
-  fetchPracticeLog, insertPractice, deletePracticeDB,
+  fetchPracticeLog, insertPractice, deletePracticeDB, updatePracticeDB,
   fetchReadiness, upsertReadiness,
   fetchSettings, upsertSettings,
 } from "./supabaseData";
@@ -1234,11 +1234,87 @@ function ExpandableNote(props) {
   );
 }
 
+function EditablePracticeEntry(props) {
+  var p = props.entry;
+  var onDelete = props.onDelete;
+  var onUpdate = props.onUpdate;
+  var [editing, setEditing] = useState(false);
+  var [editMins, setEditMins] = useState(p.minutes);
+  var [editNote, setEditNote] = useState(p.note || "");
+  var [notepadOpen, setNotepadOpen] = useState(false);
+
+  function save() {
+    var newMins = parseInt(editMins, 10);
+    if (!newMins || newMins < 1) return;
+    onUpdate(p.id, {minutes: newMins, note: editNote});
+    setEditing(false);
+  }
+
+  function cancel() {
+    setEditMins(p.minutes);
+    setEditNote(p.note || "");
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="bg-white border border-indigo-200 rounded-lg px-3 py-2 text-sm space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-700">{p.label}</span>
+          <span className="text-gray-400">({p.short || p.orchestra})</span>
+        </div>
+        <div className="flex gap-2 items-end flex-wrap">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Minutes</label>
+            <input type="number" className="border border-gray-300 rounded-lg px-2 py-1 text-sm w-20" value={editMins} onChange={function(e){setEditMins(e.target.value)}} min={1} />
+          </div>
+          <button
+            onClick={function(){setNotepadOpen(true)}}
+            className={"flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors " + (editNote ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-gray-50 border-gray-200 text-gray-400")}
+          >
+            📝 {editNote ? "Edit note" : "Add note"}
+          </button>
+          <button onClick={save} className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg hover:bg-indigo-700">Save</button>
+          <button onClick={cancel} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">Cancel</button>
+        </div>
+        {notepadOpen && (
+          <NotepadModal value={editNote} onChange={setEditNote} onClose={function(){setNotepadOpen(false)}} excerptLabel={p.label} minutes={String(editMins)} />
+        )}
+      </div>
+    );
+  }
+
+  var hasLongNote = p.note && (p.note.length > 50 || (p.note.match && p.note.match(/\n/)));
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-lg px-3 py-2 text-sm">
+      <div className="flex items-center justify-between">
+        <div className="flex-1 min-w-0">
+          <span className="font-medium text-gray-700">{p.label}</span>
+          <span className="text-gray-400 ml-2">({p.short || p.orchestra})</span>
+          {p.note && !hasLongNote && (
+            <ExpandableNote note={p.note} />
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-indigo-600 font-medium">{minsToHM(p.minutes)}</span>
+          <button onClick={function(){setEditing(true)}} className="text-gray-300 hover:text-indigo-500 text-xs" title="Edit">✎</button>
+          <button onClick={function(){onDelete(p.id)}} className="text-gray-300 hover:text-red-400">&times;</button>
+        </div>
+      </div>
+      {hasLongNote && (
+        <ExpandableNote note={p.note} />
+      )}
+    </div>
+  );
+}
+
 function PracticeTab(props) {
   var auditions = props.auditions;
   var practiceLog = props.practiceLog;
   var onAdd = props.onAdd;
   var onDelete = props.onDelete;
+  var onUpdate = props.onUpdate;
   var settings = props.settings;
 
   var allEx = useMemo(function() {
@@ -1352,24 +1428,7 @@ function PracticeTab(props) {
                   </div>
                   {entries.map(function(p) {
                     return (
-                      <div key={p.id} className="bg-white border border-gray-100 rounded-lg px-3 py-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <span className="font-medium text-gray-700">{p.label}</span>
-                            <span className="text-gray-400 ml-2">({p.short || p.orchestra})</span>
-                            {p.note && !p.note.match(/\n/) && p.note.length <= 50 && (
-                              <ExpandableNote note={p.note} />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 shrink-0">
-                            <span className="text-indigo-600 font-medium">{minsToHM(p.minutes)}</span>
-                            <button onClick={function(){onDelete(p.id)}} className="text-gray-300 hover:text-red-400">&times;</button>
-                          </div>
-                        </div>
-                        {p.note && (p.note.match(/\n/) || p.note.length > 50) && (
-                          <ExpandableNote note={p.note} />
-                        )}
-                      </div>
+                      <EditablePracticeEntry key={p.id} entry={p} onDelete={onDelete} onUpdate={onUpdate} />
                     );
                   })}
                 </div>
@@ -2258,6 +2317,23 @@ export default function App(props) {
     }
   }
 
+  async function updatePractice(id, fields) {
+    try {
+      await updatePracticeDB(id, fields);
+      setData(function(prev) {
+        return {...prev, practiceLog: prev.practiceLog.map(function(p) {
+          if (p.id !== id) return p;
+          var updated = {...p};
+          if (fields.minutes !== undefined) updated.minutes = fields.minutes;
+          if (fields.note !== undefined) updated.note = fields.note;
+          return updated;
+        })};
+      });
+    } catch(err) {
+      console.error("Update practice error:", err);
+    }
+  }
+
   async function setReadinessLevel(key, level) {
     try {
       await upsertReadiness(userId, key, level);
@@ -2489,7 +2565,7 @@ export default function App(props) {
       )}
 
       {tab === "practice" && (
-        <PracticeTab auditions={data.auditions} practiceLog={data.practiceLog} onAdd={addPractice} onDelete={deletePractice} settings={settings} />
+        <PracticeTab auditions={data.auditions} practiceLog={data.practiceLog} onAdd={addPractice} onDelete={deletePractice} onUpdate={updatePractice} settings={settings} />
       )}
 
       {tab === "reflections" && (
