@@ -9,11 +9,16 @@ export async function fetchAuditions() {
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data || []).map(function(row) {
+    var rawDate = row.date || "";
+    if (rawDate.length > 10) {
+      var dt = new Date(rawDate);
+      rawDate = dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+    }
     return {
       id: row.id,
       orchestra: row.orchestra || "",
       shortName: row.short_name || "",
-      date: row.date || "",
+      date: rawDate,
       location: row.location || "",
       status: row.status || "Preparing",
       round: row.round || "",
@@ -53,6 +58,13 @@ export async function fetchPracticeLog() {
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data || []).map(function(row) {
+    // Normalize date: if DB returns a full timestamp, extract just the local date part
+    var rawDate = row.date || "";
+    if (rawDate.length > 10) {
+      // It's a full timestamp — parse and get local date
+      var dt = new Date(rawDate);
+      rawDate = dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+    }
     return {
       id: row.id,
       excerptId: row.excerpt_id || "",
@@ -62,7 +74,7 @@ export async function fetchPracticeLog() {
       short: row.short_name || "",
       minutes: row.minutes || 0,
       note: row.note || "",
-      date: row.date || "",
+      date: rawDate,
     };
   });
 }
