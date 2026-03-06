@@ -60,6 +60,11 @@ function fmtDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"});
 }
 
+function localDateStr(dt) {
+  var d = dt || new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
 function minsToHM(m) {
   var h = Math.floor(m / 60);
   var r = m % 60;
@@ -533,8 +538,8 @@ function MilestonesTab(props) {
           label: m.label,
           type: m.type,
           daysOut: m.daysOut,
-          targetDate: targetDate.toISOString().slice(0, 10),
-          daysUntilMilestone: daysUntil(targetDate.toISOString().slice(0, 10)),
+          targetDate: localDateStr(targetDate),
+          daysUntilMilestone: daysUntil(localDateStr(targetDate)),
           completed: !!(milestoneComplete && milestoneComplete[mKey]),
           note: (milestoneNotes && milestoneNotes[mKey]) || "",
         });
@@ -1047,7 +1052,7 @@ function PracticeChart(props) {
       for (var i = count - 1; i >= 0; i--) {
         var d = new Date(today);
         d.setDate(d.getDate() - i);
-        days.push(d.toISOString().slice(0, 10));
+        days.push(localDateStr(d));
       }
       var dayMap = {};
       days.forEach(function(k) { dayMap[k] = 0; });
@@ -1072,7 +1077,7 @@ function PracticeChart(props) {
         weekStart.setDate(weekStart.getDate() - weekStart.getDay() - (w * 7));
         var weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 6);
-        weeks.push({ start: weekStart, end: weekEnd, startStr: weekStart.toISOString().slice(0,10), endStr: weekEnd.toISOString().slice(0,10), minutes: 0 });
+        weeks.push({ start: weekStart, end: weekEnd, startStr: localDateStr(weekStart), endStr: localDateStr(weekEnd), minutes: 0 });
       }
       practiceLog.forEach(function(p) {
         if (!p.date) return;
@@ -1089,7 +1094,7 @@ function PracticeChart(props) {
     var months = [];
     for (var m = 5; m >= 0; m--) {
       var md = new Date(today.getFullYear(), today.getMonth() - m, 1);
-      var key = md.toISOString().slice(0, 7);
+      var key = localDateStr(md).slice(0, 7);
       var monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
       months.push({ key: key, label: monthNames[md.getMonth()], minutes: 0 });
     }
@@ -1126,14 +1131,14 @@ function PracticeChart(props) {
           var pct = maxVal > 0 ? (d.value / maxVal) * 100 : 0;
           var barH = Math.max(pct, d.value > 0 ? 4 : 0);
           return (
-            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full relative">
               {d.value > 0 && (
-                <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                <div className="text-xs text-indigo-600 font-medium mb-0.5" style={{fontSize: 9}}>
                   {minsToHM(d.value)}
                 </div>
               )}
               <div
-                className={"w-full rounded-t transition-all duration-300 " + (d.value > 0 ? "bg-indigo-500 hover:bg-indigo-600" : "bg-gray-100")}
+                className={"w-full rounded-t transition-all duration-300 " + (d.value > 0 ? "bg-indigo-500" : "bg-gray-100")}
                 style={{height: barH + "%", minHeight: d.value > 0 ? 3 : 1}}
               />
             </div>
@@ -1256,7 +1261,7 @@ function PracticeTab(props) {
   function submit() {
     if (!sel || !mins) return;
     var ex = allEx.find(function(e){return e.excerptId === sel});
-    onAdd({id: gid(), excerptId: sel, auditionId: ex.auditionId, label: ex.label, orchestra: ex.orchestra, short: ex.short, minutes: parseInt(mins, 10), note: note, date: new Date().toISOString().slice(0,10)});
+    onAdd({id: gid(), excerptId: sel, auditionId: ex.auditionId, label: ex.label, orchestra: ex.orchestra, short: ex.short, minutes: parseInt(mins, 10), note: note, date: localDateStr()});
     setMins("");
     setNote("");
   }
@@ -1322,8 +1327,9 @@ function PracticeTab(props) {
         var sortedDates = Object.keys(grouped).sort(function(a, b) {
           return b.localeCompare(a);
         });
-        var today = new Date().toISOString().slice(0, 10);
-        var yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+        var today = localDateStr();
+        var yd = new Date(); yd.setDate(yd.getDate() - 1);
+        var yesterday = localDateStr(yd);
         function dateLabel(d) {
           if (d === today) return "Today";
           if (d === yesterday) return "Yesterday";
@@ -2338,7 +2344,7 @@ export default function App(props) {
         if (mc[mKey]) return;
         var targetDate = new Date(a.date + "T12:00:00");
         targetDate.setDate(targetDate.getDate() - m.daysOut);
-        var daysLeft = daysUntil(targetDate.toISOString().slice(0, 10));
+        var daysLeft = daysUntil(localDateStr(targetDate));
         if (daysLeft >= -1 && daysLeft <= 3) {
           urgent.push({
             label: m.label,
