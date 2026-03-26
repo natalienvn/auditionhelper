@@ -2,15 +2,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import {
   fetchAuditions, upsertAudition, deleteAuditionDB,
-  fetchPracticeLog, insertPractice, deletePracticeDB, updatePracticeDB,
+  fetchPracticeLog, insertPractice, deletePracticeDB,
   fetchReadiness, upsertReadiness,
   fetchSettings, upsertSettings,
-  // Friends feature
-  fetchMyProfile, updateMyProfile,
-  searchUserByEmail, searchUserByInviteCode,
-  fetchFriendships, sendFriendRequest, respondToFriendRequest, removeFriendship, fetchFriendProfiles,
-  logActivity, fetchActivityFeed,
-  sendEncouragement, fetchMyEncouragements, markEncouragementRead, markAllEncouragmentsRead,
 } from "./supabaseData";
 
 const SK = "aud-tracker-v4";
@@ -103,8 +97,13 @@ function getShortName(a) {
   return a.shortName || autoAbbrev(a.orchestra);
 }
 
-function loadData() { return null; }
-function saveData(data) {}
+function loadData() {
+  return null;
+}
+
+function saveData(data) {
+  // no-op: writes now go through Supabase
+}
 
 function makeDefault() {
   return {
@@ -113,23 +112,6 @@ function makeDefault() {
     readiness: {},
     settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS))
   };
-}
-
-function timeAgo(dateStr) {
-  if (!dateStr) return "";
-  var d = new Date(dateStr);
-  var now = new Date();
-  var diffMs = now - d;
-  var diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return diffMins + "m ago";
-  var diffHrs = Math.floor(diffMins / 60);
-  if (diffHrs < 24) return diffHrs + "h ago";
-  var diffDays = Math.floor(diffHrs / 24);
-  if (diffDays === 1) return "yesterday";
-  if (diffDays < 7) return diffDays + "d ago";
-  var dt2 = new Date(dateStr);
-  return localDateStr(dt2).slice(5);
 }
 
 async function extractPDF(file) {
@@ -624,6 +606,7 @@ function MilestonesTab(props) {
             </button>
           </div>
         </div>
+        {/* Notes section */}
         <div className="flex items-center gap-2">
           {m.note && !editing ? (
             <button onClick={function(){setNoteOpen(!noteOpen)}} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium flex items-center gap-1">
@@ -687,6 +670,7 @@ function MilestonesTab(props) {
 
   return (
     <div className="space-y-5">
+      {/* Progress overview */}
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-semibold text-gray-800">🎯 Milestone Progress</h4>
@@ -696,9 +680,11 @@ function MilestonesTab(props) {
           <div className="bg-green-500 h-2 rounded-full transition-all" style={{width: (totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0) + "%"}} />
         </div>
       </div>
+
       <MilestoneSection title="🔴 Overdue" color="text-red-600" items={overdue} />
       <MilestoneSection title="🟡 This Week" color="text-amber-600" items={thisWeek} />
       <MilestoneSection title="🟢 Coming Up" color="text-gray-600" items={later} />
+
       {done.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-semibold text-green-600">✅ Completed ({done.length})</h4>
@@ -851,9 +837,12 @@ function PrepPlanner(props) {
     var sessions = practiceByExcerpt[ex.key] || [];
     var [showHistory, setShowHistory] = useState(false);
 
+    // Calculate days since last practice
     var daysSincePractice = null;
     if (sessions.length > 0) {
       var dates = sessions.map(function(s) { return s.date; }).sort().reverse();
+      daysSincePractice = daysUntil(dates[0]) * -1; // negative because daysUntil counts forward
+      // recalc properly
       var lastDate = new Date(dates[0] + "T12:00:00");
       var now = new Date();
       now.setHours(0,0,0,0);
@@ -888,7 +877,10 @@ function PrepPlanner(props) {
           <div className="flex flex-col items-end gap-1 shrink-0">
             {ex.numAuditions > 1 && (<span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">x{ex.numAuditions} lists</span>)}
             {practiced > 0 && (
-              <button onClick={function(){setShowHistory(!showHistory)}} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium flex items-center gap-1 transition-colors">
+              <button
+                onClick={function(){setShowHistory(!showHistory)}}
+                className="text-xs text-indigo-500 hover:text-indigo-700 font-medium flex items-center gap-1 transition-colors"
+              >
                 {minsToHM(practiced)} practiced
                 <span className={"inline-block transition-transform " + (showHistory ? "rotate-180" : "")} style={{fontSize: 10}}>▼</span>
               </button>
@@ -925,7 +917,9 @@ function PrepPlanner(props) {
             </div>
             {sessions.map(function(p) {
               var hasLongNote = p.note && (p.note.length > 60 || p.note.indexOf("\n") >= 0);
-              return (<PlannerSessionRow key={p.id} p={p} hasLongNote={hasLongNote} />);
+              return (
+                <PlannerSessionRow key={p.id} p={p} hasLongNote={hasLongNote} />
+              );
             })}
           </div>
         )}
@@ -943,16 +937,23 @@ function PrepPlanner(props) {
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <span className="text-gray-400 shrink-0">{fmtDate(p.date)}</span>
             <span className="text-indigo-600 font-medium shrink-0">{minsToHM(p.minutes)}</span>
-            {p.note && !hasLongNote && (<span className="text-gray-500 truncate">— {p.note}</span>)}
+            {p.note && !hasLongNote && (
+              <span className="text-gray-500 truncate">— {p.note}</span>
+            )}
           </div>
           {hasLongNote && (
-            <button onClick={function(){setNoteOpen(!noteOpen)}} className="text-indigo-500 hover:text-indigo-700 font-medium ml-2 shrink-0 flex items-center gap-0.5">
+            <button
+              onClick={function(){setNoteOpen(!noteOpen)}}
+              className="text-indigo-500 hover:text-indigo-700 font-medium ml-2 shrink-0 flex items-center gap-0.5"
+            >
               📝 {noteOpen ? "hide" : "notes"}
             </button>
           )}
         </div>
         {noteOpen && p.note && (
-          <div className="mt-1.5 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">{p.note}</div>
+          <div className="mt-1.5 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">
+            {p.note}
+          </div>
         )}
       </div>
     );
@@ -1069,6 +1070,7 @@ function PracticeChart(props) {
     if (range === "14days") return buildDays(14);
 
     if (range === "weeks") {
+      // Last 8 weeks
       var weeks = [];
       for (var w = 7; w >= 0; w--) {
         var weekStart = new Date(today);
@@ -1088,6 +1090,7 @@ function PracticeChart(props) {
       });
     }
 
+    // months — last 6 months
     var months = [];
     for (var m = 5; m >= 0; m--) {
       var md = new Date(today.getFullYear(), today.getMonth() - m, 1);
@@ -1130,16 +1133,25 @@ function PracticeChart(props) {
           return (
             <div key={i} className="flex-1 flex flex-col items-center justify-end h-full relative">
               {d.value > 0 && (
-                <div className="text-xs text-indigo-600 font-medium mb-0.5" style={{fontSize: 9}}>{minsToHM(d.value)}</div>
+                <div className="text-xs text-indigo-600 font-medium mb-0.5" style={{fontSize: 9}}>
+                  {minsToHM(d.value)}
+                </div>
               )}
-              <div className={"w-full rounded-t transition-all duration-300 " + (d.value > 0 ? "bg-indigo-500" : "bg-gray-100")} style={{height: barH + "%", minHeight: d.value > 0 ? 3 : 1}} />
+              <div
+                className={"w-full rounded-t transition-all duration-300 " + (d.value > 0 ? "bg-indigo-500" : "bg-gray-100")}
+                style={{height: barH + "%", minHeight: d.value > 0 ? 3 : 1}}
+              />
             </div>
           );
         })}
       </div>
       <div className="flex gap-1">
         {chartData.map(function(d, i) {
-          return (<div key={i} className="flex-1 text-center"><span className="text-gray-400 block leading-tight" style={{fontSize: 9}}>{d.label}</span></div>);
+          return (
+            <div key={i} className="flex-1 text-center">
+              <span className="text-gray-400 block leading-tight" style={{fontSize: 9}}>{d.label}</span>
+            </div>
+          );
         })}
       </div>
       <div className="text-center text-xs text-gray-400">
@@ -1172,11 +1184,19 @@ function NotepadModal(props) {
           </div>
         )}
         <div className="flex-1 overflow-hidden">
-          <textarea className="w-full h-full resize-none px-5 py-4 text-sm text-gray-800 bg-white focus:outline-none leading-relaxed" value={value} onChange={function(e){onChange(e.target.value)}} placeholder="What did you work on? How did it feel? What needs attention next time?" autoFocus />
+          <textarea
+            className="w-full h-full resize-none px-5 py-4 text-sm text-gray-800 bg-white focus:outline-none leading-relaxed"
+            value={value}
+            onChange={function(e){onChange(e.target.value)}}
+            placeholder="What did you work on? How did it feel? What needs attention next time?&#10;&#10;Write as much as you want..."
+            autoFocus
+          />
         </div>
         <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-between">
           <span className="text-xs text-gray-400">{value.length > 0 ? value.split(/\s+/).filter(Boolean).length + " words" : "Start writing..."}</span>
-          <button onClick={onClose} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors">Done</button>
+          <button onClick={onClose} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors">
+            Done
+          </button>
         </div>
       </div>
     </div>
@@ -1188,88 +1208,28 @@ function ExpandableNote(props) {
   var [expanded, setExpanded] = useState(false);
   if (!note) return null;
   var isLong = note.length > 50 || note.indexOf("\n") >= 0;
-  if (!isLong) return <span className="text-gray-400 ml-2">— {note}</span>;
+  if (!isLong) {
+    return <span className="text-gray-400 ml-2">— {note}</span>;
+  }
   var preview = note.slice(0, 50).split("\n")[0];
   if (!expanded) {
     return (
       <span className="ml-2">
         <span className="text-gray-400">— {preview}...</span>
-        <button onClick={function(e){e.stopPropagation(); setExpanded(true)}} className="text-indigo-500 hover:text-indigo-700 text-xs ml-1 font-medium">more</button>
+        <button onClick={function(e){e.stopPropagation(); setExpanded(true)}} className="text-indigo-500 hover:text-indigo-700 text-xs ml-1 font-medium">
+          more
+        </button>
       </span>
     );
   }
   return (
     <div className="mt-1.5 ml-0">
-      <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">{note}</div>
-      <button onClick={function(e){e.stopPropagation(); setExpanded(false)}} className="text-indigo-500 hover:text-indigo-700 text-xs mt-1 font-medium">show less</button>
-    </div>
-  );
-}
-
-function EditablePracticeEntry(props) {
-  var p = props.entry;
-  var onDelete = props.onDelete;
-  var onUpdate = props.onUpdate;
-  var [editing, setEditing] = useState(false);
-  var [editMins, setEditMins] = useState(p.minutes);
-  var [editNote, setEditNote] = useState(p.note || "");
-  var [notepadOpen, setNotepadOpen] = useState(false);
-
-  function save() {
-    var newMins = parseInt(editMins, 10);
-    if (!newMins || newMins < 1) return;
-    onUpdate(p.id, {minutes: newMins, note: editNote});
-    setEditing(false);
-  }
-
-  function cancel() {
-    setEditMins(p.minutes);
-    setEditNote(p.note || "");
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <div className="bg-white border border-indigo-200 rounded-lg px-3 py-2 text-sm space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-700">{p.label}</span>
-          <span className="text-gray-400">({p.short || p.orchestra})</span>
-        </div>
-        <div className="flex gap-2 items-end flex-wrap">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">Minutes</label>
-            <input type="number" className="border border-gray-300 rounded-lg px-2 py-1 text-sm w-20" value={editMins} onChange={function(e){setEditMins(e.target.value)}} min={1} />
-          </div>
-          <button onClick={function(){setNotepadOpen(true)}} className={"flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors " + (editNote ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-gray-50 border-gray-200 text-gray-400")}>
-            📝 {editNote ? "Edit note" : "Add note"}
-          </button>
-          <button onClick={save} className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg hover:bg-indigo-700">Save</button>
-          <button onClick={cancel} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">Cancel</button>
-        </div>
-        {notepadOpen && (
-          <NotepadModal value={editNote} onChange={setEditNote} onClose={function(){setNotepadOpen(false)}} excerptLabel={p.label} minutes={String(editMins)} />
-        )}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">
+        {note}
       </div>
-    );
-  }
-
-  var hasLongNote = p.note && (p.note.length > 50 || (p.note.match && p.note.match(/\n/)));
-
-  return (
-    <div className="bg-white border border-gray-100 rounded-lg px-3 py-2 text-sm">
-      <div className="flex items-center justify-between">
-        <div className="flex-1 min-w-0">
-          <span className="font-medium text-gray-700">{p.label}</span>
-          <span className="text-gray-400 ml-2">({p.short || p.orchestra})</span>
-          {p.note && !hasLongNote && (<ExpandableNote note={p.note} />)}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-indigo-600 font-medium">{minsToHM(p.minutes)}</span>
-          <button onClick={function(){setEditing(true)}} className="text-gray-300 hover:text-indigo-500 text-xs" title="Edit">✎</button>
-          <button onClick={function(){onDelete(p.id)}} className="text-gray-300 hover:text-red-400">&times;</button>
-        </div>
-      </div>
-      {hasLongNote && (<ExpandableNote note={p.note} />)}
+      <button onClick={function(e){e.stopPropagation(); setExpanded(false)}} className="text-indigo-500 hover:text-indigo-700 text-xs mt-1 font-medium">
+        show less
+      </button>
     </div>
   );
 }
@@ -1279,7 +1239,6 @@ function PracticeTab(props) {
   var practiceLog = props.practiceLog;
   var onAdd = props.onAdd;
   var onDelete = props.onDelete;
-  var onUpdate = props.onUpdate;
   var settings = props.settings;
 
   var allEx = useMemo(function() {
@@ -1332,13 +1291,23 @@ function PracticeTab(props) {
               <Inp label="Minutes" type="number" value={mins} onChange={function(e){setMins(e.target.value)}} placeholder="30" style={{width:80}} />
               <Btn onClick={submit} disabled={!sel || !mins}>Log</Btn>
             </div>
+            {/* Note button + preview */}
             <div className="flex items-start gap-2">
-              <button onClick={function(){setNotepadOpen(true)}} className={"flex items-center gap-2 text-sm px-3 py-2 rounded-lg border transition-colors w-full text-left " + (note ? "bg-indigo-50 border-indigo-200 text-indigo-800" : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600")}>
+              <button
+                onClick={function(){setNotepadOpen(true)}}
+                className={"flex items-center gap-2 text-sm px-3 py-2 rounded-lg border transition-colors w-full text-left " + (note ? "bg-indigo-50 border-indigo-200 text-indigo-800" : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600")}
+              >
                 <span>📝</span>
-                {note ? (<span className="flex-1 truncate">{note.split("\n")[0]}</span>) : (<span className="flex-1">Add practice notes...</span>)}
+                {note ? (
+                  <span className="flex-1 truncate">{note.split("\n")[0]}</span>
+                ) : (
+                  <span className="flex-1">Add practice notes...</span>
+                )}
                 {note && <span className="text-xs text-indigo-400 shrink-0">{note.split(/\s+/).filter(Boolean).length}w</span>}
               </button>
-              {note && (<button onClick={function(){setNote("")}} className="text-gray-300 hover:text-red-400 mt-2 shrink-0" title="Clear note">&times;</button>)}
+              {note && (
+                <button onClick={function(){setNote("")}} className="text-gray-300 hover:text-red-400 mt-2 shrink-0" title="Clear note">&times;</button>
+              )}
             </div>
           </div>
         )}
@@ -1355,7 +1324,9 @@ function PracticeTab(props) {
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(p);
         });
-        var sortedDates = Object.keys(grouped).sort(function(a, b) { return b.localeCompare(a); });
+        var sortedDates = Object.keys(grouped).sort(function(a, b) {
+          return b.localeCompare(a);
+        });
         var today = localDateStr();
         var yd = new Date(); yd.setDate(yd.getDate() - 1);
         var yesterday = localDateStr(yd);
@@ -1380,7 +1351,26 @@ function PracticeTab(props) {
                     <span className="text-xs text-indigo-500 font-medium">{minsToHM(dayTotal(entries))}</span>
                   </div>
                   {entries.map(function(p) {
-                    return (<EditablePracticeEntry key={p.id} entry={p} onDelete={onDelete} onUpdate={onUpdate} />);
+                    return (
+                      <div key={p.id} className="bg-white border border-gray-100 rounded-lg px-3 py-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-gray-700">{p.label}</span>
+                            <span className="text-gray-400 ml-2">({p.short || p.orchestra})</span>
+                            {p.note && !p.note.match(/\n/) && p.note.length <= 50 && (
+                              <ExpandableNote note={p.note} />
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="text-indigo-600 font-medium">{minsToHM(p.minutes)}</span>
+                            <button onClick={function(){onDelete(p.id)}} className="text-gray-300 hover:text-red-400">&times;</button>
+                          </div>
+                        </div>
+                        {p.note && (p.note.match(/\n/) || p.note.length > 50) && (
+                          <ExpandableNote note={p.note} />
+                        )}
+                      </div>
+                    );
                   })}
                 </div>
               );
@@ -1412,6 +1402,7 @@ function PracticeTab(props) {
 function ConductorAvatar(props) {
   var mood = props.mood || "idle";
   var size = props.size || 48;
+  // Cartoon conductor: round face, top hat, baton, expressive eyes
   var eyeL = mood === "thinking" ? "—" : mood === "happy" ? "◠" : "●";
   var eyeR = mood === "thinking" ? "—" : mood === "happy" ? "◠" : "●";
   var mouth = mood === "happy" ? "◡" : mood === "thinking" ? "○" : "‿";
@@ -1419,20 +1410,29 @@ function ConductorAvatar(props) {
   var batonAngle = mood === "thinking" ? 20 : mood === "happy" ? -15 : 0;
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" className={mood === "thinking" ? "animate-pulse" : ""}>
+      {/* Body / coat */}
       <ellipse cx="50" cy="88" rx="22" ry="14" fill="#1e1b4b" />
+      {/* White shirt front */}
       <ellipse cx="50" cy="85" rx="10" ry="8" fill="white" opacity="0.9" />
+      {/* Bow tie */}
       <polygon points="45,78 50,81 55,78 55,84 50,81 45,84" fill="#ef4444" />
+      {/* Head */}
       <circle cx="50" cy="55" r="22" fill="#fcd34d" />
+      {/* Rosy cheeks */}
       <circle cx="36" cy="60" r="5" fill="#fca5a5" opacity="0.5" />
       <circle cx="64" cy="60" r="5" fill="#fca5a5" opacity="0.5" />
+      {/* Eyes */}
       <text x="40" y="56" textAnchor="middle" fontSize="10" fill="#1e1b4b">{eyeL}</text>
       <text x="60" y="56" textAnchor="middle" fontSize="10" fill="#1e1b4b">{eyeR}</text>
+      {/* Mouth */}
       <text x="50" y="68" textAnchor="middle" fontSize={mood === "happy" ? "14" : "10"} fill="#1e1b4b">{mouth}</text>
+      {/* Top hat */}
       <g transform={"rotate(" + hatTilt + " 50 30)"}>
         <rect x="32" y="18" width="36" height="22" rx="3" fill="#1e1b4b" />
         <rect x="27" y="37" width="46" height="5" rx="2" fill="#1e1b4b" />
         <rect x="34" y="30" width="32" height="3" rx="1" fill="#6366f1" />
       </g>
+      {/* Baton */}
       <g transform={"rotate(" + batonAngle + " 76 70)"}>
         <line x1="74" y1="70" x2="96" y2="50" stroke="#92400e" strokeWidth="2.5" strokeLinecap="round" />
         <circle cx="96" cy="49" r="2" fill="white" />
@@ -1455,9 +1455,12 @@ function ConductorChat(props) {
   var mood = loading ? "thinking" : messages.length > 0 && messages[messages.length - 1].role === "assistant" ? "happy" : "idle";
 
   useEffect(function() {
-    if (messagesEndRef.current) messagesEndRef.current.scrollIntoView({behavior: "smooth"});
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({behavior: "smooth"});
+    }
   }, [messages]);
 
+  // Idle greetings based on time of day
   function getGreeting() {
     var h = new Date().getHours();
     if (h < 12) return "Good morning! Ready to warm up?";
@@ -1467,12 +1470,18 @@ function ConductorChat(props) {
   }
 
   function buildContext() {
-    var active = auditions.filter(function(a) { return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0; });
-    var lines = ["AUDITION DATA:"];
-    if (active.length === 0) lines.push("No active auditions.");
+    var active = auditions.filter(function(a) {
+      return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0;
+    });
+    var lines = [];
+    lines.push("AUDITION DATA:");
+    if (active.length === 0) {
+      lines.push("No active auditions.");
+    }
     active.forEach(function(a) {
       var d = daysUntil(a.date);
-      lines.push("", "- " + a.orchestra + " (" + getShortName(a) + ") — " + (a.date ? fmtDate(a.date) + " (" + (d > 0 ? d + " days away" : "past") + ")" : "No date set") + " — Status: " + a.status);
+      lines.push("");
+      lines.push("- " + a.orchestra + " (" + getShortName(a) + ") — " + (a.date ? fmtDate(a.date) + " (" + (d > 0 ? d + " days away" : "past") + ")" : "No date set") + " — Status: " + a.status);
       if (a.round) lines.push("  Round: " + a.round);
       if (a.notes) lines.push("  Notes: " + a.notes);
       if (a.excerpts && a.excerpts.length > 0) {
@@ -1485,9 +1494,33 @@ function ConductorChat(props) {
       }
     });
     var totalMins = practiceLog.reduce(function(s,p){return s + p.minutes}, 0);
-    var last7 = practiceLog.filter(function(p) { if (!p.date) return false; var d = new Date(p.date + "T12:00:00"); var now = new Date(); return (now - d) < 7 * 864e5; });
+    var last7 = practiceLog.filter(function(p) {
+      if (!p.date) return false;
+      var d = new Date(p.date + "T12:00:00");
+      var now = new Date();
+      return (now - d) < 7 * 864e5;
+    });
     var last7Mins = last7.reduce(function(s,p){return s + p.minutes}, 0);
-    lines.push("", "PRACTICE SUMMARY:", "- Total all time: " + minsToHM(totalMins), "- Last 7 days: " + minsToHM(last7Mins) + " across " + last7.length + " sessions");
+    lines.push("");
+    lines.push("PRACTICE SUMMARY:");
+    lines.push("- Total all time: " + minsToHM(totalMins));
+    lines.push("- Last 7 days: " + minsToHM(last7Mins) + " across " + last7.length + " sessions");
+    var byExcerpt = {};
+    practiceLog.slice(0, 50).forEach(function(p) {
+      if (!byExcerpt[p.label]) byExcerpt[p.label] = {minutes: 0, notes: [], orchestra: p.short || p.orchestra};
+      byExcerpt[p.label].minutes += p.minutes;
+      if (p.note) byExcerpt[p.label].notes.push(p.note);
+    });
+    var excKeys = Object.keys(byExcerpt);
+    if (excKeys.length > 0) {
+      lines.push("");
+      lines.push("PRACTICE BY EXCERPT (recent):");
+      excKeys.forEach(function(k) {
+        var e = byExcerpt[k];
+        lines.push("- " + k + " (" + e.orchestra + "): " + minsToHM(e.minutes));
+        if (e.notes.length > 0) lines.push("  Practice notes: " + e.notes.join("; "));
+      });
+    }
     return lines.join("\n");
   }
 
@@ -1498,18 +1531,49 @@ function ConductorChat(props) {
     var newMessages = messages.concat([{role: "user", content: msgText}]);
     setMessages(newMessages);
     setLoading(true);
+
     try {
       var context = buildContext();
-      var systemPrompt = "You are the Conductor — a warm, wise, and slightly witty orchestral audition coach. Think of yourself as a favorite teacher who's been through hundreds of auditions. You're embedded in a musician's audition prep app.\n\nHere is the musician's current data:\n\n" + context + "\n\nYour personality:\n- Warm and encouraging, but honest.\n- Use occasional musical metaphors and humor\n- Be specific — reference their actual excerpts, deadlines, and notes by name\n- Keep responses concise (2-3 short paragraphs max)\n\nYour expertise:\n1. Synthesize their practice notes and give actionable feedback\n2. Suggest what to focus on based on deadlines and readiness\n3. Give specific technical tips for excerpts\n4. Help with audition nerves and mental preparation";
+      var systemPrompt = "You are the Conductor — a warm, wise, and slightly witty orchestral audition coach. Think of yourself as a favorite teacher who's been through hundreds of auditions. You're embedded in a musician's audition prep app.\n\n" +
+        "Here is the musician's current data:\n\n" + context + "\n\n" +
+        "Your personality:\n" +
+        "- Warm and encouraging, but honest. You celebrate wins and gently nudge when something needs attention.\n" +
+        "- Use occasional musical metaphors and humor (but don't overdo it)\n" +
+        "- You might say things like 'Brava!' or 'Let's tune this up' or 'From the top...'\n" +
+        "- Be specific — reference their actual excerpts, deadlines, and notes by name\n" +
+        "- Keep responses concise (2-3 short paragraphs max) since this is a small chat widget\n\n" +
+        "Your expertise:\n" +
+        "1. Synthesize their practice notes and give actionable feedback\n" +
+        "2. Suggest what to focus on based on deadlines, readiness levels, and practice history\n" +
+        "3. Give specific technical tips for excerpts (tempo, style, common pitfalls, what committees listen for)\n" +
+        "4. If they haven't practiced something coming up soon, flag it kindly\n" +
+        "5. Help with audition nerves, mental preparation, and performance psychology";
+
       var apiMessages = [{role: "user", content: systemPrompt + "\n\nConversation so far:\n" + newMessages.map(function(m) { return m.role + ": " + m.content; }).join("\n")}];
+
       if (newMessages.length > 1) {
-        apiMessages = [{role: "user", content: systemPrompt + "\n\nPlease respond to the conversation below."}, {role: "assistant", content: "Of course! I'm here and ready to help."}];
-        newMessages.forEach(function(m) { apiMessages.push({role: m.role === "user" ? "user" : "assistant", content: m.content}); });
+        apiMessages = [
+          {role: "user", content: systemPrompt + "\n\nPlease respond to the conversation below."},
+          {role: "assistant", content: "Of course! I'm here and ready to help."}
+        ];
+        newMessages.forEach(function(m) {
+          apiMessages.push({role: m.role === "user" ? "user" : "assistant", content: m.content});
+        });
       }
+
       var resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {"Content-Type": "application/json", "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true"},
-        body: JSON.stringify({model: "claude-sonnet-4-20250514", max_tokens: 800, messages: apiMessages})
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 800,
+          messages: apiMessages
+        })
       });
       var data = await resp.json();
       var text = (data.content || []).map(function(b){return b.text || ""}).join("");
@@ -1530,25 +1594,49 @@ function ConductorChat(props) {
 
   return (
     <>
+      {/* Floating conductor button */}
       <div className="fixed bottom-5 right-5 z-40 flex flex-col items-center gap-1">
         {!open && !loading && (
-          <div className="bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-md text-xs text-gray-600 animate-bounce mb-1" style={{animationDuration: "2s", animationIterationCount: 3}}>Need help? 🎶</div>
+          <div className="bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-md text-xs text-gray-600 animate-bounce mb-1" style={{animationDuration: "2s", animationIterationCount: 3}}>
+            Need help? 🎶
+          </div>
         )}
-        <button onClick={function(){setOpen(!open)}} className={"rounded-full shadow-lg flex items-center justify-center transition-all duration-300 " + (open ? "w-12 h-12 bg-gray-100 hover:bg-gray-200" : "w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700")} title="Talk to the Conductor">
-          {open ? (<span className="text-gray-500 text-lg">✕</span>) : (<ConductorAvatar mood={mood} size={52} />)}
+        <button
+          onClick={function(){setOpen(!open)}}
+          className={"rounded-full shadow-lg flex items-center justify-center transition-all duration-300 " + (open ? "w-12 h-12 bg-gray-100 hover:bg-gray-200" : "w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700")}
+          title="Talk to the Conductor"
+        >
+          {open ? (
+            <span className="text-gray-500 text-lg">✕</span>
+          ) : (
+            <ConductorAvatar mood={mood} size={52} />
+          )}
         </button>
       </div>
-      {open && (<div className="fixed inset-0 z-30" onClick={function(){setOpen(false)}} />)}
+
+      {/* Chat panel */}
+      {open && (
+        <div className="fixed inset-0 z-30" onClick={function(){setOpen(false)}} />
+      )}
       {open && (
         <div className="fixed bottom-20 right-5 z-40 w-80 sm:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col" style={{height: 500, maxHeight: "72vh"}} onClick={function(e){e.stopPropagation()}}>
+          {/* Header */}
           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-3 rounded-t-2xl flex items-center gap-3">
-            <div className="bg-white bg-opacity-20 rounded-full p-0.5"><ConductorAvatar mood={mood} size={36} /></div>
+            <div className="bg-white bg-opacity-20 rounded-full p-0.5">
+              <ConductorAvatar mood={mood} size={36} />
+            </div>
             <div className="flex-1">
               <div className="font-semibold text-sm">The Conductor</div>
               <div className="text-xs text-indigo-200">{loading ? "Composing a response..." : "Your audition coach"}</div>
             </div>
-            {messages.length > 0 && (<button onClick={function(){setMessages([])}} className="text-indigo-200 hover:text-white text-xs px-2 py-1 rounded hover:bg-white hover:bg-opacity-20 transition-colors" title="Start fresh">New chat</button>)}
+            {messages.length > 0 && (
+              <button onClick={function(){setMessages([])}} className="text-indigo-200 hover:text-white text-xs px-2 py-1 rounded hover:bg-white hover:bg-opacity-20 transition-colors" title="Start fresh">
+                New chat
+              </button>
+            )}
           </div>
+
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{minHeight: 0}}>
             {messages.length === 0 && (
               <div className="space-y-3">
@@ -1561,7 +1649,12 @@ function ConductorChat(props) {
                 </div>
                 <div className="grid grid-cols-2 gap-1.5 px-1">
                   {quickPrompts.map(function(q) {
-                    return (<button key={q.text} onClick={function(){send(q.text)}} className="flex items-center gap-1.5 text-left text-xs bg-gray-50 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg px-2.5 py-2 transition-colors border border-gray-100 hover:border-indigo-200"><span>{q.icon}</span><span>{q.text}</span></button>);
+                    return (
+                      <button key={q.text} onClick={function(){send(q.text)}} className="flex items-center gap-1.5 text-left text-xs bg-gray-50 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg px-2.5 py-2 transition-colors border border-gray-100 hover:border-indigo-200">
+                        <span>{q.icon}</span>
+                        <span>{q.text}</span>
+                      </button>
+                    );
                   })}
                 </div>
               </div>
@@ -1571,7 +1664,9 @@ function ConductorChat(props) {
               return (
                 <div key={i} className={"flex gap-2 " + (isUser ? "justify-end" : "justify-start")}>
                   {!isUser && <div className="shrink-0 mt-0.5"><ConductorAvatar mood="happy" size={24} /></div>}
-                  <div className={(isUser ? "bg-indigo-600 text-white rounded-xl rounded-tr-sm" : "bg-gray-50 text-gray-800 border border-gray-100 rounded-xl rounded-tl-sm") + " px-3 py-2 max-w-[80%] text-sm whitespace-pre-wrap"}>{m.content}</div>
+                  <div className={(isUser ? "bg-indigo-600 text-white rounded-xl rounded-tr-sm" : "bg-gray-50 text-gray-800 border border-gray-100 rounded-xl rounded-tl-sm") + " px-3 py-2 max-w-[80%] text-sm whitespace-pre-wrap"}>
+                    {m.content}
+                  </div>
                 </div>
               );
             })}
@@ -1579,18 +1674,39 @@ function ConductorChat(props) {
               <div className="flex gap-2 justify-start">
                 <div className="shrink-0 mt-0.5"><ConductorAvatar mood="thinking" size={24} /></div>
                 <div className="bg-gray-50 border border-gray-100 rounded-xl rounded-tl-sm px-3 py-2 text-sm text-gray-400">
-                  <span className="inline-flex gap-1"><span className="animate-bounce" style={{animationDelay: "0ms"}}>♪</span><span className="animate-bounce" style={{animationDelay: "150ms"}}>♫</span><span className="animate-bounce" style={{animationDelay: "300ms"}}>♪</span></span>
+                  <span className="inline-flex gap-1">
+                    <span className="animate-bounce" style={{animationDelay: "0ms"}}>♪</span>
+                    <span className="animate-bounce" style={{animationDelay: "150ms"}}>♫</span>
+                    <span className="animate-bounce" style={{animationDelay: "300ms"}}>♪</span>
+                  </span>
                 </div>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Input */}
           <div className="border-t border-gray-100 p-3">
             <div className="flex gap-2">
-              <input className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent" value={input} onChange={function(e){setInput(e.target.value)}} onKeyDown={function(e){if(e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }}} placeholder="Ask me anything..." disabled={loading} />
-              <button onClick={function(){send()}} disabled={loading || !input.trim()} className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white w-10 h-10 rounded-xl flex items-center justify-center text-sm font-medium hover:from-indigo-700 hover:to-purple-700 transition-colors disabled:opacity-40">↑</button>
+              <input
+                className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+                value={input}
+                onChange={function(e){setInput(e.target.value)}}
+                onKeyDown={function(e){if(e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }}}
+                placeholder="Ask me anything..."
+                disabled={loading}
+              />
+              <button
+                onClick={function(){send()}}
+                disabled={loading || !input.trim()}
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white w-10 h-10 rounded-xl flex items-center justify-center text-sm font-medium hover:from-indigo-700 hover:to-purple-700 transition-colors disabled:opacity-40"
+              >
+                ↑
+              </button>
             </div>
-            {!API_KEY && (<p className="text-xs text-red-400 mt-1.5 text-center">Set VITE_ANTHROPIC_API_KEY to enable the Conductor.</p>)}
+            {!API_KEY && (
+              <p className="text-xs text-red-400 mt-1.5 text-center">Set VITE_ANTHROPIC_API_KEY to enable the Conductor.</p>
+            )}
           </div>
         </div>
       )}
@@ -1613,8 +1729,12 @@ function ReflectionsTab(props) {
   var reflections = props.reflections;
   var onSave = props.onSave;
 
-  var completed = auditions.filter(function(a) { return ["Auditioned","Advanced","Won","Didn't Advance","Withdrew"].indexOf(a.status) >= 0; });
-  var upcoming = auditions.filter(function(a) { return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0; });
+  var completed = auditions.filter(function(a) {
+    return ["Auditioned","Advanced","Won","Didn't Advance","Withdrew"].indexOf(a.status) >= 0;
+  });
+  var upcoming = auditions.filter(function(a) {
+    return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0;
+  });
 
   var [selectedId, setSelectedId] = useState(null);
   var [editing, setEditing] = useState(null);
@@ -1623,15 +1743,39 @@ function ReflectionsTab(props) {
     var existing = reflections[auditionId] || {};
     setSelectedId(auditionId);
     var draft = {};
-    REFLECTION_FIELDS.forEach(function(f) { draft[f.key] = existing[f.key] || ""; });
+    REFLECTION_FIELDS.forEach(function(f) {
+      draft[f.key] = existing[f.key] || "";
+    });
     setEditing(draft);
   }
 
-  function updateField(key, value) { setEditing(function(prev) { return {...prev, [key]: value}; }); }
-  function save() { if (!selectedId || !editing) return; onSave(selectedId, editing); setSelectedId(null); setEditing(null); }
-  function cancel() { setSelectedId(null); setEditing(null); }
-  function hasReflection(id) { var r = reflections[id]; if (!r) return false; return REFLECTION_FIELDS.some(function(f) { return r[f.key] && r[f.key].trim(); }); }
-  function filledCount(id) { var r = reflections[id]; if (!r) return 0; return REFLECTION_FIELDS.filter(function(f) { return r[f.key] && r[f.key].trim(); }).length; }
+  function updateField(key, value) {
+    setEditing(function(prev) { return {...prev, [key]: value}; });
+  }
+
+  function save() {
+    if (!selectedId || !editing) return;
+    onSave(selectedId, editing);
+    setSelectedId(null);
+    setEditing(null);
+  }
+
+  function cancel() {
+    setSelectedId(null);
+    setEditing(null);
+  }
+
+  function hasReflection(id) {
+    var r = reflections[id];
+    if (!r) return false;
+    return REFLECTION_FIELDS.some(function(f) { return r[f.key] && r[f.key].trim(); });
+  }
+
+  function filledCount(id) {
+    var r = reflections[id];
+    if (!r) return 0;
+    return REFLECTION_FIELDS.filter(function(f) { return r[f.key] && r[f.key].trim(); }).length;
+  }
 
   if (selectedId && editing) {
     var aud = auditions.find(function(a) { return a.id === selectedId; });
@@ -1648,8 +1792,16 @@ function ReflectionsTab(props) {
           {REFLECTION_FIELDS.map(function(f) {
             return (
               <div key={f.key} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100"><span className="text-sm font-medium text-gray-700">{f.icon} {f.label}</span></div>
-                <textarea className="w-full px-4 py-3 text-sm text-gray-800 focus:outline-none resize-none leading-relaxed" rows={3} value={editing[f.key]} onChange={function(e){updateField(f.key, e.target.value)}} placeholder={f.placeholder} />
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                  <span className="text-sm font-medium text-gray-700">{f.icon} {f.label}</span>
+                </div>
+                <textarea
+                  className="w-full px-4 py-3 text-sm text-gray-800 focus:outline-none resize-none leading-relaxed"
+                  rows={3}
+                  value={editing[f.key]}
+                  onChange={function(e){updateField(f.key, e.target.value)}}
+                  placeholder={f.placeholder}
+                />
               </div>
             );
           })}
@@ -1664,7 +1816,10 @@ function ReflectionsTab(props) {
 
   return (
     <div className="space-y-5">
-      <div className="text-center py-2"><p className="text-sm text-gray-500">Reflect on past auditions to learn and improve.</p></div>
+      <div className="text-center py-2">
+        <p className="text-sm text-gray-500">Reflect on past auditions to learn and improve.</p>
+      </div>
+
       {completed.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-semibold text-gray-700">Completed Auditions</h4>
@@ -1678,11 +1833,15 @@ function ReflectionsTab(props) {
                     <h3 className="font-medium text-gray-900">{a.orchestra} <span className="text-sm font-normal text-gray-400">({getShortName(a)})</span></h3>
                     <p className="text-xs text-gray-400 mt-0.5">{fmtDate(a.date)}{a.round ? " · " + a.round : ""}</p>
                   </div>
-                  <Badge status={a.status} />
+                  <div className="flex items-center gap-2">
+                    <Badge status={a.status} />
+                  </div>
                 </div>
                 {has && (
                   <div className="mt-2 flex items-center gap-2">
-                    <div className="flex-1 bg-gray-100 rounded-full h-1.5"><div className="bg-indigo-500 h-1.5 rounded-full transition-all" style={{width: Math.round((filled / REFLECTION_FIELDS.length) * 100) + "%"}} /></div>
+                    <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                      <div className="bg-indigo-500 h-1.5 rounded-full transition-all" style={{width: Math.round((filled / REFLECTION_FIELDS.length) * 100) + "%"}} />
+                    </div>
                     <span className="text-xs text-gray-400">{filled}/{REFLECTION_FIELDS.length}</span>
                   </div>
                 )}
@@ -1693,31 +1852,47 @@ function ReflectionsTab(props) {
                     })}
                   </div>
                 )}
-                <div className="mt-3"><Btn variant={has ? "secondary" : "primary"} className="text-xs" onClick={function(){startReflection(a.id)}}>{has ? "Edit Reflection" : "Write Reflection"}</Btn></div>
+                <div className="mt-3">
+                  <Btn variant={has ? "secondary" : "primary"} className="text-xs" onClick={function(){startReflection(a.id)}}>
+                    {has ? "Edit Reflection" : "Write Reflection"}
+                  </Btn>
+                </div>
               </div>
             );
           })}
         </div>
       )}
+
       {upcoming.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-semibold text-gray-400">Upcoming — reflect after the audition</h4>
           {upcoming.map(function(a) {
             return (
               <div key={a.id} className="bg-gray-50 border border-gray-100 rounded-xl p-3 flex items-center justify-between opacity-60">
-                <div><span className="text-sm text-gray-500">{a.orchestra}</span><span className="text-xs text-gray-400 ml-2">{fmtDate(a.date)}</span></div>
+                <div>
+                  <span className="text-sm text-gray-500">{a.orchestra}</span>
+                  <span className="text-xs text-gray-400 ml-2">{fmtDate(a.date)}</span>
+                </div>
                 <Badge status={a.status} />
               </div>
             );
           })}
         </div>
       )}
-      {completed.length === 0 && upcoming.length === 0 && (<p className="text-sm text-gray-400 text-center py-8">No auditions yet. Reflections will appear here after you've auditioned.</p>)}
+
+      {completed.length === 0 && upcoming.length === 0 && (
+        <p className="text-sm text-gray-400 text-center py-8">No auditions yet. Reflections will appear here after you've auditioned.</p>
+      )}
     </div>
   );
 }
 
-var INSTRUMENTS = ["Violin","Viola","Cello","Double Bass","Flute","Oboe","Clarinet","Bassoon","French Horn","Trumpet","Trombone","Bass Trombone","Tuba","Percussion","Timpani","Harp","Piano","Other"];
+var INSTRUMENTS = [
+  "Violin","Viola","Cello","Double Bass",
+  "Flute","Oboe","Clarinet","Bassoon",
+  "French Horn","Trumpet","Trombone","Bass Trombone","Tuba",
+  "Percussion","Timpani","Harp","Piano","Other"
+];
 
 var COMPOSER_AVATARS = [
   { id: "beethoven", name: "Beethoven", hair: "#5c4033", hairStyle: "wild", skin: "#fcd34d", accent: "#1e1b4b", feature: "scowl" },
@@ -1737,7 +1912,12 @@ var COMPOSER_AVATARS = [
 function ComposerAvatarSVG(props) {
   var c = props.composer;
   var size = props.size || 64;
-  if (!c) return (<svg width={size} height={size} viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#e0e7ff" /><text x="50" y="58" textAnchor="middle" fontSize="30">🎵</text></svg>);
+  if (!c) return (
+    <svg width={size} height={size} viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="45" fill="#e0e7ff" />
+      <text x="50" y="58" textAnchor="middle" fontSize="30">🎵</text>
+    </svg>
+  );
 
   var hairPaths = {
     wild: <><path d="M20 45 Q15 20 35 15 Q45 5 55 10 Q70 5 80 20 Q90 35 80 45" fill={c.hair} /><path d="M22 40 Q18 25 30 18" stroke={c.hair} strokeWidth="4" fill="none" /><path d="M78 40 Q82 25 70 18" stroke={c.hair} strokeWidth="4" fill="none" /></>,
@@ -1770,9 +1950,14 @@ function ComposerAvatarSVG(props) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100">
       <circle cx="50" cy="50" r="48" fill="#f0f0ff" />
+      {/* Hair behind */}
       {hairPaths[c.hairStyle]}
+      {/* Face */}
       <ellipse cx="50" cy="55" rx="25" ry="27" fill={c.skin} />
+      {/* Cheeks default */}
+      {/* Features (eyes, mouth, extras) */}
       {features[c.feature]}
+      {/* Collar */}
       <path d="M35 80 Q50 85 65 80 L70 95 Q50 90 30 95 Z" fill={c.accent} opacity="0.3" />
     </svg>
   );
@@ -1796,7 +1981,10 @@ function ProfileTab(props) {
   var [saved, setSaved] = useState(false);
   var [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
-  function update(key, val) { setF(function(prev) { return {...prev, [key]: val}; }); setSaved(false); }
+  function update(key, val) {
+    setF(function(prev) { return {...prev, [key]: val}; });
+    setSaved(false);
+  }
 
   function save() {
     onSave(f);
@@ -1812,7 +2000,13 @@ function ProfileTab(props) {
         <div className="flex items-center gap-3">
           <button onClick={function(){setShowAvatarPicker(!showAvatarPicker)}} className="shrink-0 group relative" title="Change avatar">
             <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-indigo-200 group-hover:border-indigo-400 transition-colors">
-              {selectedComposer ? (<ComposerAvatarSVG composer={selectedComposer} size={64} />) : (<div className="w-full h-full bg-indigo-100 flex items-center justify-center text-2xl">{f.firstName ? f.firstName[0].toUpperCase() : "🎵"}</div>)}
+              {selectedComposer ? (
+                <ComposerAvatarSVG composer={selectedComposer} size={64} />
+              ) : (
+                <div className="w-full h-full bg-indigo-100 flex items-center justify-center text-2xl">
+                  {f.firstName ? f.firstName[0].toUpperCase() : "🎵"}
+                </div>
+              )}
             </div>
             <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs border-2 border-white">✎</div>
           </button>
@@ -1821,6 +2015,7 @@ function ProfileTab(props) {
             <p className="text-xs text-gray-400">{selectedComposer ? "Avatar: " + selectedComposer.name : "Click the icon to choose an avatar!"}</p>
           </div>
         </div>
+
         {showAvatarPicker && (
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -1838,9 +2033,12 @@ function ProfileTab(props) {
                 );
               })}
             </div>
-            {f.avatarId && (<button onClick={function(){update("avatarId", "")}} className="text-xs text-gray-400 hover:text-red-500">Remove avatar</button>)}
+            {f.avatarId && (
+              <button onClick={function(){update("avatarId", "")}} className="text-xs text-gray-400 hover:text-red-500">Remove avatar</button>
+            )}
           </div>
         )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Inp label="First Name" value={f.firstName} onChange={function(e){update("firstName", e.target.value)}} placeholder="Natalie" />
           <Inp label="Last Name" value={f.lastName} onChange={function(e){update("lastName", e.target.value)}} placeholder="Smith" />
@@ -1858,7 +2056,13 @@ function ProfileTab(props) {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-gray-600">About / Goals</label>
-          <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none leading-relaxed" rows={3} value={f.bio} onChange={function(e){update("bio", e.target.value)}} placeholder="Your musical goals, what you're working toward..." />
+          <textarea
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none leading-relaxed"
+            rows={3}
+            value={f.bio}
+            onChange={function(e){update("bio", e.target.value)}}
+            placeholder="Your musical goals, what you're working toward..."
+          />
         </div>
         <div className="flex items-center gap-3">
           <Btn onClick={save}>Save Profile</Btn>
@@ -1868,580 +2072,6 @@ function ProfileTab(props) {
     </div>
   );
 }
-
-// ══════════════════════════════════════════════════════
-// ═══ FRIENDS TAB ═════════════════════════════════════
-// ══════════════════════════════════════════════════════
-
-var QUICK_ENCOURAGEMENTS = [
-  "You've got this! 🎵",
-  "Break a leg! 🍀",
-  "Rooting for you! 💪",
-  "Go nail it! 🔥",
-  "Sending good vibes! ✨",
-  "You're ready! 🎶",
-  "Proud of your work! 👏",
-  "Brava/Bravo! 🎉",
-];
-
-function FriendsTab(props) {
-  var userId = props.userId;
-  var userEmail = props.userEmail;
-  var userSettings = props.userSettings;
-
-  var [subTab, setSubTab] = useState("feed"); // feed | friends | messages
-  var [friendships, setFriendships] = useState([]);
-  var [friendProfiles, setFriendProfiles] = useState({});
-  var [activityFeed, setActivityFeed] = useState([]);
-  var [encouragements, setEncouragements] = useState([]);
-  var [myProfile, setMyProfile] = useState(null);
-  var [loadingFriends, setLoadingFriends] = useState(true);
-
-  // Add friend
-  var [searchMode, setSearchMode] = useState("email"); // email | code
-  var [searchInput, setSearchInput] = useState("");
-  var [searchResult, setSearchResult] = useState(null);
-  var [searchError, setSearchError] = useState("");
-  var [searchLoading, setSearchLoading] = useState(false);
-  var [sendingRequest, setSendingRequest] = useState(false);
-
-  // Encouragement compose
-  var [composeFor, setComposeFor] = useState(null); // friend userId
-  var [composeMsg, setComposeMsg] = useState("");
-
-  // Load all friends data
-  useEffect(function() {
-    var cancelled = false;
-    async function load() {
-      try {
-        var [ships, feed, msgs, prof] = await Promise.all([
-          fetchFriendships(),
-          fetchActivityFeed(50),
-          fetchMyEncouragements(),
-          fetchMyProfile(),
-        ]);
-        if (cancelled) return;
-        setFriendships(ships);
-        setActivityFeed(feed);
-        setEncouragements(msgs);
-        setMyProfile(prof);
-
-        // Get all unique friend user IDs
-        var friendIds = [];
-        ships.forEach(function(s) {
-          var fid = s.requester_id === userId ? s.recipient_id : s.requester_id;
-          if (friendIds.indexOf(fid) < 0) friendIds.push(fid);
-        });
-        // Also get IDs from activity feed
-        feed.forEach(function(a) {
-          if (a.user_id !== userId && friendIds.indexOf(a.user_id) < 0) friendIds.push(a.user_id);
-        });
-        // Fetch profiles
-        if (friendIds.length > 0) {
-          var profiles = await fetchFriendProfiles(friendIds);
-          var map = {};
-          profiles.forEach(function(p) { map[p.id] = p; });
-          if (!cancelled) setFriendProfiles(map);
-        }
-      } catch(err) {
-        console.error("Friends load error:", err);
-      }
-      if (!cancelled) setLoadingFriends(false);
-    }
-    load();
-    return function() { cancelled = true; };
-  }, [userId]);
-
-  var acceptedFriends = useMemo(function() {
-    return friendships.filter(function(s) { return s.status === "accepted"; });
-  }, [friendships]);
-
-  var pendingReceived = useMemo(function() {
-    return friendships.filter(function(s) { return s.status === "pending" && s.recipient_id === userId; });
-  }, [friendships, userId]);
-
-  var pendingSent = useMemo(function() {
-    return friendships.filter(function(s) { return s.status === "pending" && s.requester_id === userId; });
-  }, [friendships, userId]);
-
-  var unreadCount = useMemo(function() {
-    return encouragements.filter(function(e) { return e.to_id === userId && !e.read; }).length;
-  }, [encouragements, userId]);
-
-  function getFriendName(uid) {
-    var p = friendProfiles[uid];
-    if (p && p.display_name) return p.display_name;
-    if (p && p.email) return p.email.split("@")[0];
-    return "Friend";
-  }
-
-  function getFriendAvatarId(uid) {
-    var p = friendProfiles[uid];
-    return p ? p.avatar_id : null;
-  }
-
-  function getMyName() {
-    var prof = userSettings && userSettings.profile;
-    if (prof && prof.firstName) return prof.firstName;
-    return userEmail ? userEmail.split("@")[0] : "You";
-  }
-
-  // Search for friend
-  async function doSearch() {
-    if (!searchInput.trim()) return;
-    setSearchLoading(true);
-    setSearchError("");
-    setSearchResult(null);
-    try {
-      var result;
-      if (searchMode === "email") {
-        result = await searchUserByEmail(searchInput.trim());
-      } else {
-        result = await searchUserByInviteCode(searchInput.trim());
-      }
-      if (!result) {
-        setSearchError(searchMode === "email" ? "No user found with that email." : "No user found with that invite code.");
-      } else if (result.id === userId) {
-        setSearchError("That's you!");
-      } else {
-        setSearchResult(result);
-      }
-    } catch(err) {
-      setSearchError("Search failed. Try again.");
-    }
-    setSearchLoading(false);
-  }
-
-  async function doSendRequest(recipientId) {
-    setSendingRequest(true);
-    try {
-      await sendFriendRequest(userId, recipientId);
-      // Refresh friendships
-      var ships = await fetchFriendships();
-      setFriendships(ships);
-      setSearchResult(null);
-      setSearchInput("");
-    } catch(err) {
-      setSearchError(err.message || "Could not send request.");
-    }
-    setSendingRequest(false);
-  }
-
-  async function doRespond(friendshipId, accept) {
-    try {
-      await respondToFriendRequest(friendshipId, accept);
-      var ships = await fetchFriendships();
-      setFriendships(ships);
-      // Refresh profiles
-      var friendIds = [];
-      ships.forEach(function(s) {
-        var fid = s.requester_id === userId ? s.recipient_id : s.requester_id;
-        if (friendIds.indexOf(fid) < 0) friendIds.push(fid);
-      });
-      if (friendIds.length > 0) {
-        var profiles = await fetchFriendProfiles(friendIds);
-        var map = {};
-        profiles.forEach(function(p) { map[p.id] = p; });
-        setFriendProfiles(map);
-      }
-    } catch(err) {
-      console.error("Respond error:", err);
-    }
-  }
-
-  async function doRemoveFriend(friendshipId) {
-    if (!confirm("Remove this friend?")) return;
-    try {
-      await removeFriendship(friendshipId);
-      var ships = await fetchFriendships();
-      setFriendships(ships);
-    } catch(err) {
-      console.error("Remove friend error:", err);
-    }
-  }
-
-  async function doSendEncouragement() {
-    if (!composeFor || !composeMsg.trim()) return;
-    try {
-      await sendEncouragement(userId, composeFor, composeMsg.trim(), null);
-      var msgs = await fetchMyEncouragements();
-      setEncouragements(msgs);
-      setComposeFor(null);
-      setComposeMsg("");
-    } catch(err) {
-      console.error("Send encouragement error:", err);
-    }
-  }
-
-  async function doMarkRead(id) {
-    try {
-      await markEncouragementRead(id);
-      setEncouragements(function(prev) {
-        return prev.map(function(e) { return e.id === id ? {...e, read: true} : e; });
-      });
-    } catch(err) {
-      console.error("Mark read error:", err);
-    }
-  }
-
-  async function doMarkAllRead() {
-    try {
-      await markAllEncouragmentsRead(userId);
-      setEncouragements(function(prev) {
-        return prev.map(function(e) { return e.to_id === userId ? {...e, read: true} : e; });
-      });
-    } catch(err) {
-      console.error(err);
-    }
-  }
-
-  // Activity feed event icons
-  function eventIcon(type) {
-    var icons = {
-      practice: "🎻",
-      audition_added: "📋",
-      audition_status: "🔄",
-      milestone_complete: "🎯",
-      reflection: "📝",
-      joined: "👋",
-    };
-    return icons[type] || "📌";
-  }
-
-  function eventText(evt) {
-    var d = evt.event_data || {};
-    var name = evt.user_id === userId ? "You" : getFriendName(evt.user_id);
-    switch(evt.event_type) {
-      case "practice":
-        return name + " practiced " + (d.label || "an excerpt") + " for " + minsToHM(d.minutes || 0);
-      case "audition_added":
-        return name + " added an audition: " + (d.orchestra || "");
-      case "audition_status":
-        return name + "'s " + (d.orchestra || "audition") + " status changed to " + (d.status || "");
-      case "milestone_complete":
-        return name + " completed a milestone: " + (d.label || "");
-      case "reflection":
-        return name + " wrote a reflection for " + (d.orchestra || "an audition");
-      case "joined":
-        return name + " joined Audition Tracker!";
-      default:
-        return name + " did something";
-    }
-  }
-
-  if (loadingFriends) {
-    return <p className="text-sm text-gray-400 text-center py-8">Loading friends...</p>;
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Sub-tab navigation */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-        {[["feed", "Activity Feed"], ["friends", "Friends (" + acceptedFriends.length + ")"], ["messages", "Messages" + (unreadCount > 0 ? " (" + unreadCount + ")" : "")]].map(function(item) {
-          return (
-            <button key={item[0]} onClick={function(){setSubTab(item[0])}} className={"flex-1 text-sm font-medium py-2 px-3 rounded-md transition-colors " + (subTab === item[0] ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
-              {item[1]}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ─── ACTIVITY FEED ─── */}
-      {subTab === "feed" && (
-        <div className="space-y-3">
-          {activityFeed.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-4xl mb-2">🎶</p>
-              <p className="text-sm text-gray-500">No activity yet! Add some friends to see what everyone's working on.</p>
-            </div>
-          ) : (
-            activityFeed.map(function(evt) {
-              var isMe = evt.user_id === userId;
-              var avatarId = isMe ? (userSettings && userSettings.profile && userSettings.profile.avatarId) : getFriendAvatarId(evt.user_id);
-              var comp = avatarId ? COMPOSER_AVATARS.find(function(c) { return c.id === avatarId; }) : null;
-              return (
-                <div key={evt.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-start gap-3">
-                  <div className="shrink-0 w-8 h-8 rounded-full overflow-hidden bg-indigo-100 flex items-center justify-center">
-                    {comp ? <ComposerAvatarSVG composer={comp} size={32} /> : <span className="text-sm">{eventIcon(evt.event_type)}</span>}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-800">{eventText(evt)}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{timeAgo(evt.created_at)}</p>
-                  </div>
-                  {!isMe && (
-                    <button onClick={function(){setComposeFor(evt.user_id); setSubTab("messages")}} className="text-xs text-indigo-500 hover:text-indigo-700 shrink-0" title="Send encouragement">
-                      💬
-                    </button>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {/* ─── FRIENDS LIST ─── */}
-      {subTab === "friends" && (
-        <div className="space-y-4">
-          {/* Your invite code */}
-          {myProfile && myProfile.invite_code && (
-            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-semibold text-indigo-800">Your Invite Code</h4>
-                  <p className="text-xs text-indigo-600 mt-0.5">Share this code with friends so they can add you!</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="bg-white border border-indigo-300 rounded-lg px-3 py-1.5 text-lg font-mono font-bold text-indigo-700 tracking-wider">{myProfile.invite_code}</span>
-                  <button
-                    onClick={function() {
-                      navigator.clipboard.writeText(myProfile.invite_code);
-                    }}
-                    className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700"
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Add friend */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-            <h4 className="text-sm font-semibold text-gray-800">Add a Friend</h4>
-            <div className="flex gap-2">
-              <button onClick={function(){setSearchMode("email"); setSearchResult(null); setSearchError("")}} className={"text-xs px-3 py-1.5 rounded-lg " + (searchMode === "email" ? "bg-indigo-100 text-indigo-700 font-medium" : "bg-gray-100 text-gray-500")}>
-                By Email
-              </button>
-              <button onClick={function(){setSearchMode("code"); setSearchResult(null); setSearchError("")}} className={"text-xs px-3 py-1.5 rounded-lg " + (searchMode === "code" ? "bg-indigo-100 text-indigo-700 font-medium" : "bg-gray-100 text-gray-500")}>
-                By Invite Code
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                placeholder={searchMode === "email" ? "friend@email.com" : "Enter invite code"}
-                value={searchInput}
-                onChange={function(e){setSearchInput(e.target.value)}}
-                onKeyDown={function(e){if(e.key === "Enter") doSearch()}}
-              />
-              <Btn onClick={doSearch} disabled={searchLoading || !searchInput.trim()}>
-                {searchLoading ? "..." : "Search"}
-              </Btn>
-            </div>
-            {searchError && <p className="text-xs text-red-500">{searchError}</p>}
-            {searchResult && (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-800">{searchResult.display_name || searchResult.email}</p>
-                  {searchResult.instrument && <p className="text-xs text-gray-400">{searchResult.instrument}</p>}
-                </div>
-                <Btn onClick={function(){doSendRequest(searchResult.id)}} disabled={sendingRequest} className="text-xs">
-                  {sendingRequest ? "Sending..." : "Send Request"}
-                </Btn>
-              </div>
-            )}
-          </div>
-
-          {/* Pending received */}
-          {pendingReceived.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-amber-700">📬 Friend Requests ({pendingReceived.length})</h4>
-              {pendingReceived.map(function(s) {
-                var fromId = s.requester_id;
-                return (
-                  <div key={s.id} className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{getFriendName(fromId)}</p>
-                      <p className="text-xs text-gray-400">{timeAgo(s.created_at)}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={function(){doRespond(s.id, true)}} className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700">Accept</button>
-                      <button onClick={function(){doRespond(s.id, false)}} className="text-xs bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-300">Decline</button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Pending sent */}
-          {pendingSent.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-gray-500">⏳ Pending Requests</h4>
-              {pendingSent.map(function(s) {
-                var toId = s.recipient_id;
-                return (
-                  <div key={s.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center justify-between opacity-70">
-                    <div>
-                      <p className="text-sm text-gray-600">{getFriendName(toId)}</p>
-                      <p className="text-xs text-gray-400">Sent {timeAgo(s.created_at)}</p>
-                    </div>
-                    <span className="text-xs text-gray-400 italic">Waiting...</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Accepted friends */}
-          <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-gray-700">🎵 Your Friends ({acceptedFriends.length})</h4>
-            {acceptedFriends.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">No friends yet! Search above to add someone.</p>
-            ) : (
-              acceptedFriends.map(function(s) {
-                var fid = s.requester_id === userId ? s.recipient_id : s.requester_id;
-                var profile = friendProfiles[fid];
-                var avatarId = profile && profile.avatar_id;
-                var comp = avatarId ? COMPOSER_AVATARS.find(function(c) { return c.id === avatarId; }) : null;
-                return (
-                  <div key={s.id} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
-                    <div className="shrink-0 w-12 h-12 rounded-full overflow-hidden bg-indigo-100 flex items-center justify-center">
-                      {comp ? <ComposerAvatarSVG composer={comp} size={48} /> : <span className="text-xl">🎵</span>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900">{getFriendName(fid)}</p>
-                      {profile && profile.instrument && <p className="text-xs text-gray-400">{profile.instrument}</p>}
-                      {profile && profile.email && <p className="text-xs text-gray-300">{profile.email}</p>}
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button onClick={function(){setComposeFor(fid); setSubTab("messages")}} className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100" title="Send encouragement">
-                        💬 Encourage
-                      </button>
-                      <button onClick={function(){doRemoveFriend(s.id)}} className="text-xs text-gray-300 hover:text-red-400" title="Remove friend">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── MESSAGES ─── */}
-      {subTab === "messages" && (
-        <div className="space-y-4">
-          {/* Compose */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-            <h4 className="text-sm font-semibold text-gray-800">💬 Send Encouragement</h4>
-            {acceptedFriends.length === 0 ? (
-              <p className="text-sm text-gray-400">Add friends first to send encouragement!</p>
-            ) : (
-              <>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-600">To</label>
-                  <select
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                    value={composeFor || ""}
-                    onChange={function(e){setComposeFor(e.target.value || null)}}
-                  >
-                    <option value="">Select a friend...</option>
-                    {acceptedFriends.map(function(s) {
-                      var fid = s.requester_id === userId ? s.recipient_id : s.requester_id;
-                      return <option key={fid} value={fid}>{getFriendName(fid)}</option>;
-                    })}
-                  </select>
-                </div>
-                {/* Quick messages */}
-                <div className="flex flex-wrap gap-1.5">
-                  {QUICK_ENCOURAGEMENTS.map(function(q) {
-                    return (
-                      <button key={q} onClick={function(){setComposeMsg(q)}} className={"text-xs px-2.5 py-1.5 rounded-full border transition-colors " + (composeMsg === q ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100")}>
-                        {q}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    placeholder="Or write your own..."
-                    value={composeMsg}
-                    onChange={function(e){setComposeMsg(e.target.value)}}
-                    onKeyDown={function(e){if(e.key === "Enter") doSendEncouragement()}}
-                  />
-                  <Btn onClick={doSendEncouragement} disabled={!composeFor || !composeMsg.trim()}>Send</Btn>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Received messages */}
-          {(function() {
-            var received = encouragements.filter(function(e) { return e.to_id === userId; });
-            var sent = encouragements.filter(function(e) { return e.from_id === userId; });
-
-            return (
-              <>
-                {received.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-semibold text-gray-700">📨 Received</h4>
-                      {unreadCount > 0 && (
-                        <button onClick={doMarkAllRead} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">
-                          Mark all read
-                        </button>
-                      )}
-                    </div>
-                    {received.map(function(e) {
-                      var fromAvatarId = getFriendAvatarId(e.from_id);
-                      var comp = fromAvatarId ? COMPOSER_AVATARS.find(function(c) { return c.id === fromAvatarId; }) : null;
-                      return (
-                        <div key={e.id} className={"border rounded-lg p-3 flex items-start gap-3 " + (e.read ? "bg-white border-gray-200" : "bg-indigo-50 border-indigo-200")} onClick={function(){if(!e.read) doMarkRead(e.id)}}>
-                          <div className="shrink-0 w-8 h-8 rounded-full overflow-hidden bg-indigo-100 flex items-center justify-center">
-                            {comp ? <ComposerAvatarSVG composer={comp} size={32} /> : <span className="text-sm">💬</span>}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-800">{getFriendName(e.from_id)}</span>
-                              {!e.read && <span className="w-2 h-2 bg-indigo-500 rounded-full" />}
-                            </div>
-                            <p className="text-sm text-gray-700 mt-0.5">{e.message}</p>
-                            <p className="text-xs text-gray-400 mt-1">{timeAgo(e.created_at)}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {sent.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-semibold text-gray-500">📤 Sent</h4>
-                    {sent.map(function(e) {
-                      return (
-                        <div key={e.id} className="bg-gray-50 border border-gray-100 rounded-lg p-3 flex items-start gap-3 opacity-70">
-                          <div className="shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm">📤</div>
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm text-gray-600">To {getFriendName(e.to_id)}</span>
-                            <p className="text-sm text-gray-500 mt-0.5">{e.message}</p>
-                            <p className="text-xs text-gray-400 mt-1">{timeAgo(e.created_at)}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {received.length === 0 && sent.length === 0 && (
-                  <div className="text-center py-6">
-                    <p className="text-3xl mb-2">💌</p>
-                    <p className="text-sm text-gray-400">No messages yet! Send encouragement to a friend above.</p>
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════
 
 function exportCSV(data) {
   var rows = [["Orchestra","Short Name","Date","Location","Status","Round","Notes","Excerpts"]];
@@ -2500,7 +2130,7 @@ export default function App(props) {
     return QUOTES[Math.floor(Math.random() * QUOTES.length)];
   }, []);
 
-  // Load all data from Supabase on mount
+  // Load all data from Supabase on mount, migrate localStorage if needed
   useEffect(function() {
     var cancelled = false;
     async function load() {
@@ -2512,36 +2142,51 @@ export default function App(props) {
           fetchSettings(),
         ]);
 
-        // Auto-migrate from localStorage if Supabase is empty
+        // Auto-migrate from localStorage if Supabase is empty and localStorage has data
         var localRaw = null;
         try { localRaw = localStorage.getItem(SK); } catch(e) {}
         var localData = localRaw ? JSON.parse(localRaw) : null;
 
         if (auditions.length === 0 && localData && localData.auditions && localData.auditions.length > 0) {
           console.log("Migrating localStorage data to Supabase...");
+          // Migrate auditions
           for (var i = 0; i < localData.auditions.length; i++) {
             var a = localData.auditions[i];
             if (!a.shortName) a.shortName = a.shortName || autoAbbrev(a.orchestra);
             await upsertAudition(userId, a);
           }
+          // Migrate practice log
           if (localData.practiceLog) {
             for (var j = 0; j < localData.practiceLog.length; j++) {
               await insertPractice(userId, localData.practiceLog[j]);
             }
           }
+          // Migrate readiness
           if (localData.readiness) {
             var keys = Object.keys(localData.readiness);
             for (var k = 0; k < keys.length; k++) {
               await upsertReadiness(userId, keys[k], localData.readiness[keys[k]]);
             }
           }
+          // Migrate settings
           if (localData.settings) {
             await upsertSettings(userId, localData.settings);
           }
+          // Mark migration done so we don't repeat
           try { localStorage.setItem(SK + "-migrated", "true"); } catch(e) {}
           console.log("Migration complete!");
-          var fresh = await Promise.all([fetchAuditions(), fetchPracticeLog(), fetchReadiness(), fetchSettings()]);
-          auditions = fresh[0]; practiceLog = fresh[1]; readiness = fresh[2]; settings = fresh[3];
+
+          // Re-fetch everything from Supabase
+          var fresh = await Promise.all([
+            fetchAuditions(),
+            fetchPracticeLog(),
+            fetchReadiness(),
+            fetchSettings(),
+          ]);
+          auditions = fresh[0];
+          practiceLog = fresh[1];
+          readiness = fresh[2];
+          settings = fresh[3];
         }
 
         if (!cancelled) {
@@ -2552,19 +2197,6 @@ export default function App(props) {
             settings: settings || JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
           });
           setLoading(false);
-        }
-
-        // Sync profile display_name and avatar_id to profiles table for friends feature
-        if (settings && settings.profile) {
-          var prof = settings.profile;
-          var displayName = (prof.firstName || "") + (prof.lastName ? " " + prof.lastName : "");
-          if (displayName.trim()) {
-            updateMyProfile(userId, {
-              display_name: displayName.trim(),
-              avatar_id: prof.avatarId || "",
-              instrument: prof.instrument || "",
-            }).catch(function(e) { console.log("Profile sync note:", e.message); });
-          }
         }
       } catch(err) {
         console.error("Failed to load data:", err);
@@ -2577,23 +2209,11 @@ export default function App(props) {
 
   async function saveAudition(a) {
     try {
-      var isNew = !data.auditions.find(function(x){return x.id === a.id});
       await upsertAudition(userId, a);
       var idx = data.auditions.findIndex(function(x){return x.id === a.id});
       var au = idx >= 0 ? data.auditions.map(function(x,i){return i === idx ? a : x}) : [...data.auditions, a];
       setData(function(prev) { return {...prev, auditions: au}; });
       setEditing(null);
-
-      // Log activity
-      if (isNew) {
-        logActivity(userId, "audition_added", {orchestra: a.orchestra, shortName: getShortName(a)});
-      } else {
-        // Check if status changed
-        var prev = data.auditions.find(function(x){return x.id === a.id});
-        if (prev && prev.status !== a.status) {
-          logActivity(userId, "audition_status", {orchestra: a.orchestra, status: a.status, shortName: getShortName(a)});
-        }
-      }
     } catch(err) {
       console.error("Save audition error:", err);
       alert("Failed to save audition. Check console.");
@@ -2603,6 +2223,7 @@ export default function App(props) {
   async function deleteAudition(id) {
     try {
       await deleteAuditionDB(id);
+      // also delete related practice logs from DB
       var relatedLogs = data.practiceLog.filter(function(p){return p.auditionId === id});
       for (var i = 0; i < relatedLogs.length; i++) {
         await deletePracticeDB(relatedLogs[i].id);
@@ -2623,8 +2244,6 @@ export default function App(props) {
     try {
       await insertPractice(userId, entry);
       setData(function(prev) { return {...prev, practiceLog: [entry, ...prev.practiceLog]}; });
-      // Log activity
-      logActivity(userId, "practice", {label: entry.label, orchestra: entry.short || entry.orchestra, minutes: entry.minutes});
     } catch(err) {
       console.error("Add practice error:", err);
     }
@@ -2636,23 +2255,6 @@ export default function App(props) {
       setData(function(prev) { return {...prev, practiceLog: prev.practiceLog.filter(function(p){return p.id !== id})}; });
     } catch(err) {
       console.error("Delete practice error:", err);
-    }
-  }
-
-  async function updatePractice(id, fields) {
-    try {
-      await updatePracticeDB(id, fields);
-      setData(function(prev) {
-        return {...prev, practiceLog: prev.practiceLog.map(function(p) {
-          if (p.id !== id) return p;
-          var updated = {...p};
-          if (fields.minutes !== undefined) updated.minutes = fields.minutes;
-          if (fields.note !== undefined) updated.note = fields.note;
-          return updated;
-        })};
-      });
-    } catch(err) {
-      console.error("Update practice error:", err);
     }
   }
 
@@ -2678,9 +2280,6 @@ export default function App(props) {
     var s = data.settings || DEFAULT_SETTINGS;
     var updated = {...s, reflections: {...(s.reflections || {}), [auditionId]: reflection}};
     await updateSettings(updated);
-    // Log activity
-    var aud = data.auditions.find(function(a){return a.id === auditionId});
-    logActivity(userId, "reflection", {orchestra: aud ? aud.orchestra : "", shortName: aud ? getShortName(aud) : ""});
   }
 
   async function saveMilestoneNote(key, noteText) {
@@ -2693,26 +2292,12 @@ export default function App(props) {
     var s = data.settings || DEFAULT_SETTINGS;
     var updated = {...s, milestoneComplete: {...(s.milestoneComplete || {}), [key]: completed}};
     await updateSettings(updated);
-    // Log activity for completion
-    if (completed) {
-      var label = key.split("::")[1] || "milestone";
-      logActivity(userId, "milestone_complete", {label: label});
-    }
   }
 
   async function saveProfile(profile) {
     var s = data.settings || DEFAULT_SETTINGS;
     var updated = {...s, profile: profile};
     await updateSettings(updated);
-    // Sync to profiles table for friends feature
-    var displayName = (profile.firstName || "") + (profile.lastName ? " " + profile.lastName : "");
-    if (displayName.trim()) {
-      updateMyProfile(userId, {
-        display_name: displayName.trim(),
-        avatar_id: profile.avatarId || "",
-        instrument: profile.instrument || "",
-      }).catch(function(e) { console.log("Profile sync note:", e.message); });
-    }
   }
 
   async function handleSignOut() {
@@ -2761,7 +2346,12 @@ export default function App(props) {
         targetDate.setDate(targetDate.getDate() - m.daysOut);
         var daysLeft = daysUntil(localDateStr(targetDate));
         if (daysLeft >= -1 && daysLeft <= 3) {
-          urgent.push({label: m.label, orchestra: getShortName(a), daysLeft: daysLeft, type: m.type});
+          urgent.push({
+            label: m.label,
+            orchestra: getShortName(a),
+            daysLeft: daysLeft,
+            type: m.type,
+          });
         }
       });
     });
@@ -2770,7 +2360,11 @@ export default function App(props) {
   }, [data.auditions, settings, data.settings, loading]);
 
   if (loading) {
-    return (<div className="max-w-3xl mx-auto p-4 text-center py-20"><p className="text-gray-400 text-sm">Loading your data...</p></div>);
+    return (
+      <div className="max-w-3xl mx-auto p-4 text-center py-20">
+        <p className="text-gray-400 text-sm">Loading your data...</p>
+      </div>
+    );
   }
 
   return (
@@ -2804,7 +2398,6 @@ export default function App(props) {
         </div>
       </div>
       <p className="text-xs text-gray-400 italic -mt-2">{dailyQuote}</p>
-
       {urgentMilestones.length > 0 && !remindersDismissed && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between">
@@ -2826,12 +2419,13 @@ export default function App(props) {
               </div>
             );
           })}
-          <button onClick={function(){setTab("milestones"); setRemindersDismissed(true)}} className="text-xs text-amber-700 hover:text-amber-900 font-medium">Go to Milestones →</button>
+          <button onClick={function(){setTab("milestones"); setRemindersDismissed(true)}} className="text-xs text-amber-700 hover:text-amber-900 font-medium">
+            Go to Milestones →
+          </button>
         </div>
       )}
-
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["milestones","Milestones"],["reflections","Reflections"],["friends","Friends"],["profile","Profile"],["settings","Settings"]].map(function(item) {
+        {[["auditions","Auditions"],["planner","Prep Planner"],["practice","Practice"],["milestones","Milestones"],["reflections","Reflections"],["profile","Profile"],["settings","Settings"]].map(function(item) {
           return (
             <TabBtn key={item[0]} label={item[1]} active={tab === item[0]} onClick={function(){setTab(item[0])}} alert={(item[0] === "planner" || item[0] === "milestones") && hasActiveMilestones} />
           );
@@ -2857,16 +2451,22 @@ export default function App(props) {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold text-gray-900">{a.orchestra} <span className="text-sm font-normal text-gray-400">({getShortName(a)})</span></h3>
-                    <p className="text-sm text-gray-500">{fmtDate(a.date)}{a.location ? " · " + a.location : ""}{a.round ? " · " + a.round : ""}</p>
+                    <p className="text-sm text-gray-500">
+                      {fmtDate(a.date)}{a.location ? " · " + a.location : ""}{a.round ? " · " + a.round : ""}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge status={a.status} />
-                    {a.date && d > 0 && d < 999 && (<span className={"text-xs " + (d <= 7 ? "text-red-600 font-bold" : "text-gray-400")}>{d}d</span>)}
+                    {a.date && d > 0 && d < 999 && (
+                      <span className={"text-xs " + (d <= 7 ? "text-red-600 font-bold" : "text-gray-400")}>{d}d</span>
+                    )}
                   </div>
                 </div>
                 {a.excerpts.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {a.excerpts.map(function(e) { return (<span key={e.id} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{excLabel(e)}</span>); })}
+                    {a.excerpts.map(function(e) {
+                      return (<span key={e.id} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{excLabel(e)}</span>);
+                    })}
                   </div>
                 )}
                 {a.notes && (<p className="text-sm text-gray-500 italic">{a.notes}</p>)}
@@ -2889,15 +2489,11 @@ export default function App(props) {
       )}
 
       {tab === "practice" && (
-        <PracticeTab auditions={data.auditions} practiceLog={data.practiceLog} onAdd={addPractice} onDelete={deletePractice} onUpdate={updatePractice} settings={settings} />
+        <PracticeTab auditions={data.auditions} practiceLog={data.practiceLog} onAdd={addPractice} onDelete={deletePractice} settings={settings} />
       )}
 
       {tab === "reflections" && (
         <ReflectionsTab auditions={data.auditions} reflections={(data.settings || {}).reflections || {}} onSave={saveReflection} />
-      )}
-
-      {tab === "friends" && (
-        <FriendsTab userId={userId} userEmail={session.user.email} userSettings={data.settings || {}} />
       )}
 
       {tab === "profile" && (
