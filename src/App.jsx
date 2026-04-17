@@ -35,10 +35,10 @@ const DEFAULT_SETTINGS = {
   excerptTimerMins: 20,
   sessionTimerMins: 120,
   runThroughMilestones: [
-    {daysOut:21, label:"Play excerpts for a friend/colleague", type:"informal"},
-    {daysOut:14, label:"Full run-through for someone", type:"runthrough"},
-    {daysOut:7, label:"Mock audition (simulate real conditions)", type:"mock"},
-    {daysOut:3, label:"Final dress run-through", type:"dress"},
+    {daysOut:21, label:"Play excerpts for a friend/colleague"},
+    {daysOut:14, label:"Full run-through for someone"},
+    {daysOut:7, label:"Mock audition (simulate real conditions)"},
+    {daysOut:3, label:"Final dress run-through"},
   ],
 };
 
@@ -665,7 +665,6 @@ function MilestonesTab(props) {
           auditionDate: a.date,
           daysToAudition: days,
           label: m.label,
-          type: m.type,
           daysOut: m.daysOut,
           targetDate: localDateStr(targetDate),
           daysUntilMilestone: daysUntil(localDateStr(targetDate)),
@@ -682,19 +681,6 @@ function MilestonesTab(props) {
   var thisWeek = allMilestones.filter(function(m) { return m.daysUntilMilestone >= 0 && m.daysUntilMilestone <= 7 && !m.completed; });
   var later = allMilestones.filter(function(m) { return m.daysUntilMilestone > 7 && !m.completed; });
   var done = allMilestones.filter(function(m) { return m.completed; });
-
-  var typeColors = {
-    informal: "border-l-blue-400",
-    runthrough: "border-l-purple-400",
-    mock: "border-l-amber-400",
-    dress: "border-l-red-400"
-  };
-  var typeIcons = {
-    informal: "🎵",
-    runthrough: "🎶",
-    mock: "🎭",
-    dress: "👔"
-  };
 
   function MilestoneCard(cardProps) {
     var m = cardProps.m;
@@ -717,11 +703,11 @@ function MilestonesTab(props) {
     }
 
     return (
-      <div className={"bg-white border border-gray-200 border-l-4 rounded-lg p-3 space-y-2 " + (typeColors[m.type] || "border-l-gray-400") + (m.completed ? " opacity-60" : "")}>
+      <div className={"bg-white border border-gray-200 border-l-4 border-l-indigo-400 rounded-lg p-3 space-y-2" + (m.completed ? " opacity-60" : "")}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <span>{typeIcons[m.type] || "🎯"}</span>
+              <span>🎯</span>
               {editingLabel ? (
                 <div className="flex items-center gap-2 flex-1">
                   <input
@@ -861,7 +847,7 @@ function SettingsPanel(props) {
   var [et, setEt] = useState(settings.excerptTimerMins);
   var [st, setSt] = useState(settings.sessionTimerMins);
   var [miles, setMiles] = useState(settings.runThroughMilestones || DEFAULT_SETTINGS.runThroughMilestones);
-  var [newM, setNewM] = useState({daysOut:"", label:"", type:"informal"});
+  var [newM, setNewM] = useState({daysOut:"", label:""});
 
   function save() {
     onUpdate({...settings, excerptTimerMins: parseInt(et) || 20, sessionTimerMins: parseInt(st) || 120, runThroughMilestones: miles});
@@ -869,10 +855,10 @@ function SettingsPanel(props) {
 
   function addMilestone() {
     if (!newM.daysOut || !newM.label) return;
-    var updated = [...miles, {daysOut: parseInt(newM.daysOut), label: newM.label, type: newM.type}];
+    var updated = [...miles, {daysOut: parseInt(newM.daysOut), label: newM.label}];
     updated.sort(function(a,b) { return b.daysOut - a.daysOut; });
     setMiles(updated);
-    setNewM({daysOut:"", label:"", type:"informal"});
+    setNewM({daysOut:"", label:""});
   }
 
   function removeMilestone(idx) {
@@ -903,7 +889,6 @@ function SettingsPanel(props) {
               <div key={i} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-3 py-2">
                 <span className="font-medium text-indigo-600 w-12 shrink-0">{m.daysOut}d</span>
                 <span className="flex-1">{m.label}</span>
-                <span className="text-xs text-gray-400">{m.type}</span>
                 <button onClick={function(){removeMilestone(i)}} className="text-gray-300 hover:text-red-500">&times;</button>
               </div>
             );
@@ -912,7 +897,6 @@ function SettingsPanel(props) {
         <div className="flex gap-2 flex-wrap items-end border-t border-gray-100 pt-3">
           <Inp label="Days before" type="number" value={newM.daysOut} onChange={function(e){setNewM({...newM, daysOut: e.target.value})}} placeholder="14" style={{width:80}} />
           <Inp label="Description" value={newM.label} onChange={function(e){setNewM({...newM, label: e.target.value})}} placeholder="Play for a friend" />
-          <Sel label="Type" value={newM.type} onChange={function(e){setNewM({...newM, type: e.target.value})}} options={["informal","runthrough","mock","dress"]} />
           <Btn onClick={addMilestone} disabled={!newM.daysOut || !newM.label}>Add</Btn>
         </div>
       </div>
@@ -3082,7 +3066,7 @@ export default function App(props) {
         targetDate.setDate(targetDate.getDate() - m.daysOut);
         var daysLeft = daysUntil(localDateStr(targetDate));
         if (daysLeft >= -1 && daysLeft <= 3) {
-          urgent.push({label: m.label, orchestra: getShortName(a), daysLeft: daysLeft, type: m.type});
+          urgent.push({label: m.label, orchestra: getShortName(a), daysLeft: daysLeft});
         }
       });
     });
