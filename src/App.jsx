@@ -623,7 +623,7 @@ function RunThroughPanel(props) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-gray-800">🎯 Run-Through Milestones</h4>
+        <h4 className="text-sm font-semibold text-gray-800">🎯 Milestones</h4>
         {onSwitchTab && (
           <button onClick={function(){onSwitchTab("milestones")}} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">View all →</button>
         )}
@@ -640,6 +640,8 @@ function MilestonesTab(props) {
   var milestoneComplete = props.milestoneComplete;
   var onSaveNote = props.onSaveNote;
   var onToggleComplete = props.onToggleComplete;
+  var onRenameLabel = props.onRenameLabel;
+  var [showCompleted, setShowCompleted] = useState(false);
 
   var active = auditions.filter(function(a) {
     return ["Preparing"].indexOf(a.status) >= 0 && a.date;
@@ -699,10 +701,19 @@ function MilestonesTab(props) {
     var [noteOpen, setNoteOpen] = useState(false);
     var [draft, setDraft] = useState(m.note);
     var [editing, setEditing] = useState(false);
+    var [editingLabel, setEditingLabel] = useState(false);
+    var [labelDraft, setLabelDraft] = useState(m.label);
 
     function saveNote() {
       onSaveNote(m.key, draft);
       setEditing(false);
+    }
+
+    function saveLabel() {
+      if (labelDraft.trim() && labelDraft.trim() !== m.label) {
+        onRenameLabel(m.auditionId, m.label, labelDraft.trim(), m.key, m.note, m.completed);
+      }
+      setEditingLabel(false);
     }
 
     return (
@@ -711,7 +722,24 @@ function MilestonesTab(props) {
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <span>{typeIcons[m.type] || "🎯"}</span>
-              <span className={"text-sm font-medium " + (m.completed ? "line-through text-gray-400" : "text-gray-900")}>{m.label}</span>
+              {editingLabel ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <input
+                    className="text-sm font-medium text-gray-900 border border-gray-300 rounded-lg px-2 py-1 flex-1 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    value={labelDraft}
+                    onChange={function(e){setLabelDraft(e.target.value)}}
+                    onKeyDown={function(e){if(e.key==="Enter") saveLabel(); if(e.key==="Escape") setEditingLabel(false)}}
+                    autoFocus
+                  />
+                  <button onClick={saveLabel} className="text-xs bg-indigo-600 text-white px-2 py-1 rounded-lg hover:bg-indigo-700">Save</button>
+                  <button onClick={function(){setEditingLabel(false); setLabelDraft(m.label)}} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                </div>
+              ) : (
+                <span className={"text-sm font-medium " + (m.completed ? "line-through text-gray-400" : "text-gray-900")}>
+                  {m.label}
+                  <button onClick={function(){setEditingLabel(true); setLabelDraft(m.label)}} className="text-gray-300 hover:text-indigo-500 ml-2 text-xs" title="Rename">✎</button>
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs text-indigo-600 font-medium">{m.shortName}</span>
@@ -809,9 +837,18 @@ function MilestonesTab(props) {
       <MilestoneSection title="🟡 This Week" color="text-amber-600" items={thisWeek} />
       <MilestoneSection title="🟢 Coming Up" color="text-gray-600" items={later} />
       {done.length > 0 && (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-green-600">✅ Completed ({done.length})</h4>
-          {done.map(function(m) { return <MilestoneCard key={m.key} m={m} />; })}
+        <div className="pt-2">
+          <button onClick={function(){setShowCompleted(!showCompleted)}} className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600 transition-colors w-full">
+            <div className="flex-1 border-t border-gray-200" />
+            <span className="shrink-0">{showCompleted ? "Hide" : "Show"} completed ({done.length})</span>
+            <span className={"transition-transform " + (showCompleted ? "rotate-180" : "")}>▼</span>
+            <div className="flex-1 border-t border-gray-200" />
+          </button>
+          {showCompleted && (
+            <div className="space-y-2 mt-3">
+              {done.map(function(m) { return <MilestoneCard key={m.key} m={m} />; })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -858,7 +895,7 @@ function SettingsPanel(props) {
         </div>
       </div>
       <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-        <h3 className="font-semibold text-gray-800">Run-Through Milestones</h3>
+        <h3 className="font-semibold text-gray-800">Milestones</h3>
         <p className="text-xs text-gray-500">Configure when to schedule play-throughs, mock auditions, etc.</p>
         <div className="space-y-2">
           {miles.map(function(m, i) {
@@ -2847,10 +2884,9 @@ export default function App(props) {
       });
       var relatedLogs = data.practiceLog.filter(function(p) {
         if (p.auditionId !== id) return false;
-        // Check if this excerpt exists on another audition
         if (deletingAud) {
           var ex = deletingAud.excerpts.find(function(e){return e.id === p.excerptId});
-          if (ex && otherNormKeys[normExcerpt(ex)]) return false; // Keep it — excerpt is on another audition
+          if (ex && otherNormKeys[normExcerpt(ex)]) return false;
         }
         return true;
       });
@@ -2945,11 +2981,29 @@ export default function App(props) {
     var s = data.settings || DEFAULT_SETTINGS;
     var updated = {...s, milestoneComplete: {...(s.milestoneComplete || {}), [key]: completed}};
     await updateSettings(updated);
-    // Log activity for completion
     if (completed) {
       var label = key.split("::")[1] || "milestone";
       logActivity(userId, "milestone_complete", {label: label});
     }
+  }
+
+  async function renameMilestoneLabel(auditionId, oldLabel, newLabel, oldKey, oldNote, oldCompleted) {
+    var s = data.settings || DEFAULT_SETTINGS;
+    // Update the milestone label in runThroughMilestones
+    var miles = (s.runThroughMilestones || DEFAULT_SETTINGS.runThroughMilestones).map(function(m) {
+      if (m.label === oldLabel) return {...m, label: newLabel};
+      return m;
+    });
+    // Migrate notes and completion from old key to new key
+    var newKey = auditionId + "::" + newLabel;
+    var mNotes = Object.assign({}, s.milestoneNotes || {});
+    var mComplete = Object.assign({}, s.milestoneComplete || {});
+    if (oldNote) { mNotes[newKey] = oldNote; }
+    delete mNotes[oldKey];
+    if (oldCompleted) { mComplete[newKey] = true; }
+    delete mComplete[oldKey];
+    var updated = {...s, runThroughMilestones: miles, milestoneNotes: mNotes, milestoneComplete: mComplete};
+    await updateSettings(updated);
   }
 
   async function unifyExcerpt(auditionId, excerptId, useExcerpt) {
@@ -3180,7 +3234,7 @@ export default function App(props) {
       )}
 
       {tab === "milestones" && (
-        <MilestonesTab auditions={data.auditions} settings={settings} milestoneNotes={(data.settings || {}).milestoneNotes || {}} milestoneComplete={(data.settings || {}).milestoneComplete || {}} onSaveNote={saveMilestoneNote} onToggleComplete={toggleMilestoneComplete} />
+        <MilestonesTab auditions={data.auditions} settings={settings} milestoneNotes={(data.settings || {}).milestoneNotes || {}} milestoneComplete={(data.settings || {}).milestoneComplete || {}} onSaveNote={saveMilestoneNote} onToggleComplete={toggleMilestoneComplete} onRenameLabel={renameMilestoneLabel} />
       )}
 
       {tab === "practice" && (
