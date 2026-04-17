@@ -14,15 +14,11 @@ import {
 } from "./supabaseData";
 
 const SK = "aud-tracker-v4";
-const STATUSES = ["Preparing","Applied","Scheduled","Auditioned","Advanced","Won","Didn't Advance","Withdrew"];
+const STATUSES = ["Preparing","Auditioned","Won","Withdrew"];
 const STATUS_COLORS = {
   Preparing:"bg-yellow-100 text-yellow-800",
-  Applied:"bg-blue-100 text-blue-800",
-  Scheduled:"bg-indigo-100 text-indigo-800",
   Auditioned:"bg-purple-100 text-purple-800",
-  Advanced:"bg-emerald-100 text-emerald-800",
   Won:"bg-green-200 text-green-900",
-  "Didn't Advance":"bg-gray-100 text-gray-600",
   Withdrew:"bg-red-100 text-red-700"
 };
 const READINESS = ["Not Started","Rough","In Progress","Nearly Ready","Performance Ready"];
@@ -607,7 +603,7 @@ function RunThroughPanel(props) {
   var settings = props.settings;
   var onSwitchTab = props.onSwitchTab;
   var active = auditions.filter(function(a) {
-    return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0 && a.date;
+    return ["Preparing"].indexOf(a.status) >= 0 && a.date;
   });
   if (!active.length) return null;
 
@@ -646,7 +642,7 @@ function MilestonesTab(props) {
   var onToggleComplete = props.onToggleComplete;
 
   var active = auditions.filter(function(a) {
-    return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0 && a.date;
+    return ["Preparing"].indexOf(a.status) >= 0 && a.date;
   });
 
   var milestones = settings.runThroughMilestones || DEFAULT_SETTINGS.runThroughMilestones;
@@ -901,7 +897,7 @@ function PrepPlanner(props) {
   var onUnifyExcerpt = props.onUnifyExcerpt;
 
   var active = auditions.filter(function(a) {
-    return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0;
+    return ["Preparing"].indexOf(a.status) >= 0;
   });
 
   var excerptMap = useMemo(function() {
@@ -1705,7 +1701,7 @@ function ConductorChat(props) {
   }
 
   function buildContext() {
-    var active = auditions.filter(function(a) { return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0; });
+    var active = auditions.filter(function(a) { return ["Preparing"].indexOf(a.status) >= 0; });
     var lines = ["AUDITION DATA:"];
     if (active.length === 0) lines.push("No active auditions.");
     active.forEach(function(a) {
@@ -1851,8 +1847,8 @@ function ReflectionsTab(props) {
   var reflections = props.reflections;
   var onSave = props.onSave;
 
-  var completed = auditions.filter(function(a) { return ["Auditioned","Advanced","Won","Didn't Advance","Withdrew"].indexOf(a.status) >= 0; });
-  var upcoming = auditions.filter(function(a) { return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0; });
+  var completed = auditions.filter(function(a) { return ["Auditioned","Won","Withdrew"].indexOf(a.status) >= 0; });
+  var upcoming = auditions.filter(function(a) { return ["Preparing"].indexOf(a.status) >= 0; });
 
   var [selectedId, setSelectedId] = useState(null);
   var [editing, setEditing] = useState(null);
@@ -2996,10 +2992,9 @@ export default function App(props) {
   var stats = useMemo(function() {
     var t = data.auditions.length;
     var w = data.auditions.filter(function(a){return a.status === "Won"}).length;
-    var adv = data.auditions.filter(function(a){return a.status === "Advanced"}).length;
-    var comp = data.auditions.filter(function(a){return ["Auditioned","Advanced","Won","Didn't Advance"].indexOf(a.status) >= 0}).length;
+    var comp = data.auditions.filter(function(a){return ["Auditioned","Won"].indexOf(a.status) >= 0}).length;
     var tp = data.practiceLog.reduce(function(s,p){return s + p.minutes}, 0);
-    return {total:t, won:w, advanced:adv, completed:comp, totalPractice:tp, advanceRate: comp > 0 ? Math.round(((w+adv)/comp)*100) : 0};
+    return {total:t, won:w, completed:comp, totalPractice:tp, winRate: comp > 0 ? Math.round((w/comp)*100) : 0};
   }, [data]);
 
   var sorted = useMemo(function() {
@@ -3009,7 +3004,7 @@ export default function App(props) {
   }, [data.auditions]);
 
   var hasActiveMilestones = useMemo(function() {
-    var active = data.auditions.filter(function(a){return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0 && a.date});
+    var active = data.auditions.filter(function(a){return ["Preparing"].indexOf(a.status) >= 0 && a.date});
     var miles = (settings.runThroughMilestones || []);
     return active.some(function(a) {
       var d = daysUntil(a.date);
@@ -3021,7 +3016,7 @@ export default function App(props) {
 
   var urgentMilestones = useMemo(function() {
     if (loading) return [];
-    var active = data.auditions.filter(function(a){return ["Preparing","Applied","Scheduled"].indexOf(a.status) >= 0 && a.date});
+    var active = data.auditions.filter(function(a){return ["Preparing"].indexOf(a.status) >= 0 && a.date});
     var miles = settings.runThroughMilestones || DEFAULT_SETTINGS.runThroughMilestones;
     var mc = (data.settings || {}).milestoneComplete || {};
     var urgent = [];
@@ -3124,7 +3119,7 @@ export default function App(props) {
           )}
           {sorted.length === 0 && !editing && (<p className="text-sm text-gray-400 text-center py-8">No auditions yet — add one to get started.</p>)}
           {(function() {
-            var ACTIVE_STATUSES = ["Preparing","Applied","Scheduled"];
+            var ACTIVE_STATUSES = ["Preparing"];
             var activeSorted = sorted.filter(function(a) { return ACTIVE_STATUSES.indexOf(a.status) >= 0; });
             var pastSorted = sorted.filter(function(a) { return ACTIVE_STATUSES.indexOf(a.status) < 0; });
 
