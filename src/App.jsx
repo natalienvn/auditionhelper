@@ -2706,6 +2706,7 @@ export default function App(props) {
   var [editing, setEditing] = useState(null);
   var [loading, setLoading] = useState(true);
   var [conductorMessages, setConductorMessages] = useState([]);
+  var [showPast, setShowPast] = useState(false);
 
   var QUOTES = [
     "I'm not a genius. I'm just a tremendous bundle of experience. — R. Buckminster Fuller",
@@ -3122,33 +3123,60 @@ export default function App(props) {
             <Btn onClick={function(){setEditing("new")}}>+ New Audition</Btn>
           )}
           {sorted.length === 0 && !editing && (<p className="text-sm text-gray-400 text-center py-8">No auditions yet — add one to get started.</p>)}
-          {sorted.map(function(a) {
-            var d = daysUntil(a.date);
-            return (
-              <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-2 shadow-sm">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{a.orchestra} <span className="text-sm font-normal text-gray-400">({getShortName(a)})</span></h3>
-                    <p className="text-sm text-gray-500">{fmtDate(a.date)}{a.location ? " · " + a.location : ""}{a.round ? " · " + a.round : ""}</p>
+          {(function() {
+            var ACTIVE_STATUSES = ["Preparing","Applied","Scheduled"];
+            var activeSorted = sorted.filter(function(a) { return ACTIVE_STATUSES.indexOf(a.status) >= 0; });
+            var pastSorted = sorted.filter(function(a) { return ACTIVE_STATUSES.indexOf(a.status) < 0; });
+
+            function renderCard(a) {
+              var d = daysUntil(a.date);
+              return (
+                <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-2 shadow-sm">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">{a.orchestra} <span className="text-sm font-normal text-gray-400">({getShortName(a)})</span></h3>
+                      <p className="text-sm text-gray-500">{fmtDate(a.date)}{a.location ? " · " + a.location : ""}{a.round ? " · " + a.round : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge status={a.status} />
+                      {a.date && d > 0 && d < 999 && (<span className={"text-xs " + (d <= 7 ? "text-red-600 font-bold" : "text-gray-400")}>{d}d</span>)}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge status={a.status} />
-                    {a.date && d > 0 && d < 999 && (<span className={"text-xs " + (d <= 7 ? "text-red-600 font-bold" : "text-gray-400")}>{d}d</span>)}
+                  {a.excerpts.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {a.excerpts.map(function(e) { return (<span key={e.id} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{excLabel(e)}</span>); })}
+                    </div>
+                  )}
+                  {a.notes && (<p className="text-sm text-gray-500 italic">{a.notes}</p>)}
+                  <div className="flex gap-2 pt-1">
+                    <Btn variant="ghost" className="text-xs" onClick={function(){setEditing(a.id)}}>Edit</Btn>
+                    <Btn variant="danger" className="text-xs" onClick={function(){deleteAudition(a.id)}}>Delete</Btn>
                   </div>
                 </div>
-                {a.excerpts.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {a.excerpts.map(function(e) { return (<span key={e.id} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{excLabel(e)}</span>); })}
+              );
+            }
+
+            return (
+              <>
+                {activeSorted.map(renderCard)}
+                {pastSorted.length > 0 && (
+                  <div className="pt-2">
+                    <button onClick={function(){setShowPast(!showPast)}} className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600 transition-colors w-full">
+                      <div className="flex-1 border-t border-gray-200" />
+                      <span className="shrink-0">{showPast ? "Hide" : "Show"} past auditions ({pastSorted.length})</span>
+                      <span className={"transition-transform " + (showPast ? "rotate-180" : "")}>▼</span>
+                      <div className="flex-1 border-t border-gray-200" />
+                    </button>
+                    {showPast && (
+                      <div className="space-y-4 mt-4 opacity-75">
+                        {pastSorted.map(renderCard)}
+                      </div>
+                    )}
                   </div>
                 )}
-                {a.notes && (<p className="text-sm text-gray-500 italic">{a.notes}</p>)}
-                <div className="flex gap-2 pt-1">
-                  <Btn variant="ghost" className="text-xs" onClick={function(){setEditing(a.id)}}>Edit</Btn>
-                  <Btn variant="danger" className="text-xs" onClick={function(){deleteAudition(a.id)}}>Delete</Btn>
-                </div>
-              </div>
+              </>
             );
-          })}
+          })()}
         </div>
       )}
 
